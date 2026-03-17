@@ -1,10 +1,16 @@
-import os
+import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
-import streamlit as st
-from mistralai import Mistral
-from streamlit_gsheets import GSheetsConnection
+import os
 
+# TEST D'IMPORT SECURISE
+try:
+    from mistralai import Mistral
+except ImportError:
+    st.error("La bibliothèque Mistral n'est pas installée. Vérifie ton requirements.txt")
+    st.stop()
+
+from streamlit_gsheets import GSheetsConnection
 # Configuration
 st.set_page_config(page_title="Grizzly et Moineau", layout="wide")
 
