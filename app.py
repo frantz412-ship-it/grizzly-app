@@ -4,12 +4,18 @@ import json
 from docx import Document
 import io
 
-# --- CONFIGURATION API ---
-API_KEY = "AIzaSyAVOZz6MuW_ml4GbvLyUaQUGyNLSmTTrWs"
-genai.configure(api_key=API_KEY)
+# --- CONFIGURATION API SÉCURISÉE ---
+# On récupère la clé depuis les Secrets de Streamlit (plus de leak !)
+try:
+    API_KEY = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=API_KEY)
+except Exception:
+    st.error("Clé API manquante. Configurez 'GOOGLE_API_KEY' dans les Secrets de Streamlit.")
+    st.stop()
 
 # --- CONFIGURATION PAGE ---
 st.set_page_config(page_title="Grizzly et Moineau - Bible Pro", layout="wide")
+# ... le reste du code reste identique ...
 
 # --- STYLE CSS ---
 st.markdown("""
