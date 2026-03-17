@@ -15,10 +15,17 @@ st.markdown("""
     <style>
     .main { background-color: #0f172a; }
     .stTextArea textarea { background-color: #000; color: #38bdf8; }
-    .tag { display: inline-block; padding: 2px 10px; border-radius: 10px; background: #1e293b; border: 1px solid #38bdf8; margin: 2px; font-size: 0.8rem; }
+    .tag { 
+        display: inline-block; 
+        padding: 2px 10px; 
+        border-radius: 10px; 
+        background: #1e293b; 
+        border: 1px solid #38bdf8; 
+        margin: 2px; 
+        font-size: 0.8rem; 
+    }
     </style>
-    """, unsafe_allow_stdio=True)
-
+    """, unsafe_allow_html=True) # <-- C'est ici qu'on corrige 'html' au lieu de 'stdio'
 # --- FONCTION DE LECTURE DOCX ---
 def read_docx(file):
     doc = Document(file)
