@@ -4,3 +4,5 @@ mistralai==1.2.6
 st-gsheets-connection
 pypdf2
 ntplib
+google-generativeai
+python-docx
