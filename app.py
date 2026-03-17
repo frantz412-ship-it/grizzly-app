@@ -1,19 +1,22 @@
 import streamlit as st
 from google import genai
+from mistralai import Mistral
 import json
 from docx import Document
 import time
 
-# --- 1. CONFIGURATION API SÉCURISÉE ---
+# --- 1. INITIALISATION DES CLIENTS ---
 try:
-    API_KEY = st.secrets["GOOGLE_API_KEY"]
-    client = genai.Client(api_key=API_KEY)
-except Exception:
-    st.error("⚠️ Clé API manquante. Configurez 'GOOGLE_API_KEY' dans les Secrets de Streamlit.")
+    # Client Google
+    client_google = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
+    # Client Mistral
+    client_mistral = Mistral(api_key=st.secrets["MISTRAL_API_KEY"])
+except Exception as e:
+    st.error("⚠️ Erreur de configuration des clés API dans les Secrets.")
     st.stop()
 
-# --- 2. CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="Grizzly et Moineau - Bible Pro", layout="wide")
+# --- 2. CONFIGURATION UI ---
+st.set_page_config(page_title="Grizzly et Moineau - Multi-IA", layout="wide")
 
 st.markdown("""
     <style>
@@ -23,7 +26,7 @@ st.markdown("""
         background: #1e293b; border: 1px solid #38bdf8; 
         margin: 4px; color: #38bdf8; font-size: 0.85rem; 
     }
-    h1, h2, h3 { color: #38bdf8 !important; }
+    .stRadio [data-testid="stMarkdownContainer"] { color: #38bdf8; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -32,85 +35,79 @@ def read_docx(file):
     doc = Document(file)
     return '\n'.join([p.text for p in doc.paragraphs])
 
-def decouper_texte(texte, taille=5000):
-    """Découpe le texte en blocs pour respecter les quotas gratuits."""
-    return [texte[i:i+taille] for i in range(0, len(texte), taille)]
-
-def analyser_chapitre_complet(texte_complet):
-    morceaux = decouper_texte(texte_complet)
-    resultats_finaux = {
-        "personnages": set(), "capacites": set(), "armes": set(),
-        "traumas": set(), "lieux": set(), "resumes": []
-    }
+def analyser_bloc(texte, moteur):
+    prompt = f"Analyse cet extrait de 'Grizzly et Moineau'. Extraits en JSON : personnages, capacites, armes, traumas, lieux, resume. Texte : {texte}"
     
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    if moteur == "Google Gemini 2.0":
+        response = client_google.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt,
+            config={'response_mime_type': 'application/json'}
+        )
+        return json.loads(response.text)
     
-    for idx, morceau in enumerate(morceaux):
-        status_text.text(f"Analyse du bloc {idx+1}/{len(morceaux)}...")
-        try:
-            prompt = f"Analyse cet extrait de 'Grizzly et Moineau'. Identifie : personnages, capacites, armes, traumas, lieux, resume. Réponds UNIQUEMENT en JSON : {morceau}"
-            
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-                config={'response_mime_type': 'application/json'}
-            )
-            
-            data = json.loads(response.text)
-            
-            # Fusion des données
-            for cle in ["personnages", "capacites", "armes", "traumas", "lieux"]:
-                if cle in data and isinstance(data[cle], list):
-                    resultats_finaux[cle].update(data[cle])
-            
-            if "resume" in data:
-                resultats_finaux["resumes"].append(data["resume"])
-            
-            # Pause de sécurité pour le quota (Free Tier)
-            time.sleep(3) 
-            
-        except Exception as e:
-            st.warning(f"Bloc {idx+1} ignoré suite à une erreur (Quota probable).")
-            
-        progress_bar.progress((idx + 1) / len(morceaux))
+    else: # Mode Mistral
+        response = client_mistral.chat.complete(
+            model="mistral-large-latest",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        return json.loads(response.choices[0].message.content)
 
-    status_text.text("✅ Analyse terminée !")
-    return resultats_finaux
+# --- 4. INTERFACE ---
+st.title("📚 Grizzly et Moineau : Hub d'Analyse")
 
-# --- 4. INTERFACE UTILISATEUR ---
-st.title("📚 Grizzly et Moineau : Analyseur de Saga")
+# Barre latérale pour le choix du moteur
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    moteur_choisi = st.radio(
+        "Choisir l'Intelligence Artificielle :",
+        ["Google Gemini 2.0", "Mistral AI (Large)"]
+    )
+    st.info(f"Moteur actuel : **{moteur_choisi}**")
 
-# C'est cette ligne qui manquait ou était mal placée :
-uploaded_file = st.file_uploader("Importer un chapitre (.docx)", type="docx")
+uploaded_file = st.file_uploader("Charger un chapitre (.docx)", type="docx")
 
 if uploaded_file:
     full_text = read_docx(uploaded_file)
-    st.info(f"Fichier chargé : {len(full_text)} caractères.")
+    # Découpage pour sécurité quotas
+    morceaux = [full_text[i:i+5000] for i in range(0, len(full_text), 5000)]
     
-    if st.button("🚀 LANCER L'ANALYSE COMPLÈTE"):
-        res = analyser_chapitre_complet(full_text)
+    if st.button(f"🚀 ANALYSER AVEC {moteur_choisi.upper()}"):
+        resultats_globaux = {"personnages": set(), "capacites": set(), "armes": set(), "traumas": set(), "lieux": set(), "resumes": []}
         
-        # --- AFFICHAGE ---
-        st.subheader("📝 Résumé Global")
-        st.info(" ".join(res["resumes"]))
-        
+        progress = st.progress(0)
+        for idx, bloc in enumerate(morceaux):
+            with st.spinner(f"Analyse bloc {idx+1}/{len(morceaux)}..."):
+                try:
+                    data = analyser_bloc(bloc, moteur_choisi)
+                    for k in ["personnages", "capacites", "armes", "traumas", "lieux"]:
+                        if k in data: resultats_globaux[k].update(data[k])
+                    if "resume" in data: resultats_globaux["resumes"].append(data["resume"])
+                    time.sleep(1) # Sécurité tempo
+                except Exception as e:
+                    st.error(f"Erreur sur le bloc {idx+1} : {e}")
+            progress.progress((idx + 1) / len(morceaux))
+
+        # AFFICHAGE FINAL
+        st.divider()
+        st.subheader("📝 Résumé Global du Chapitre")
+        st.write(" ".join(resultats_globaux["resumes"]))
+
         col1, col2 = st.columns(2)
         with col1:
             st.write("**👤 Personnages**")
-            for p in sorted(res["personnages"]):
+            for p in sorted(resultats_globaux["personnages"]):
                 st.markdown(f'<span class="tag">{p}</span>', unsafe_allow_html=True)
-            
-            st.write("**✨ Capacités & Armes**")
-            all_items = sorted(list(res["capacites"]) + list(res["armes"]))
-            for i in all_items:
+            st.write("**✨ Capacités & Objets**")
+            items = sorted(list(resultats_globaux["capacites"]) + list(resultats_globaux["armes"]))
+            for i in items:
                 st.markdown(f'<span class="tag">{i}</span>', unsafe_allow_html=True)
 
         with col2:
             st.write("**🧠 Thèmes & Traumas**")
-            for t in sorted(res["traumas"]):
+            for t in sorted(resultats_globaux["traumas"]):
                 st.markdown(f'<span class="tag">{t}</span>', unsafe_allow_html=True)
-            
             st.write("**📍 Lieux**")
-            for l in sorted(res["lieux"]):
+            for l in sorted(resultats_globaux["lieux"]):
                 st.markdown(f'<span class="tag">{l}</span>', unsafe_allow_html=True)
