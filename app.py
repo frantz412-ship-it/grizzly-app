@@ -34,25 +34,28 @@ def read_docx(file):
         full_text.append(para.text)
     return '\n'.join(full_text)
 
-# --- LOGIQUE D'ANALYSE ---
+# --- LOGIQUE D'ANALYSE CORRIGÉE ---
 def analyser_texte(texte):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    prompt = f"""Tu es l'expert de la saga 'Grizzly et Moineau'. Analyse cet extrait de chapitre.
+    # On essaie d'utiliser le nom de modèle le plus stable
+    # Si 'gemini-1.5-flash' échoue, on peut tester 'gemini-1.5-flash-latest'
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash') 
+    
+    prompt = f"""Tu es l'expert de la saga 'Grizzly et Moineau'. Analyse cet extrait.
     Identifie : Personnages, Capacités, Armes, Traumas, Lieux.
     Réponds UNIQUEMENT en JSON :
     {{"personnages":[], "capacites":[], "armes":[], "traumas":[], "lieux":[], "resume":""}}
-    Texte : {texte[:4000]}""" # On limite à 4000 caractères pour la stabilité
+    Texte : {texte[:4000]}"""
     
     response = model.generate_content(
         prompt,
         safety_settings=[
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
     )
     return json.loads(response.text.replace('```json', '').replace('```', ''))
-
 # --- INTERFACE ---
 st.title("📚 Grizzly et Moineau : Gestionnaire de Chapitres")
 
