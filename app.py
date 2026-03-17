@@ -37,64 +37,83 @@ def read_docx(file):
     doc = Document(file)
     return '\n'.join([p.text for p in doc.paragraphs])
 
-def analyser_texte(texte):
-    try:
-        # Utilisation de Gemini 2.0 Flash
-        prompt = f"Analyse cet extrait de 'Grizzly et Moineau'. Identifie : personnages, capacites, armes, traumas, lieux, resume. Réponds UNIQUEMENT en JSON : {texte[:8000]}"
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt,
-            config={'response_mime_type': 'application/json'}
-        )
-        return json.loads(response.text)
-    except Exception as e:
-        return {"error": str(e)}
+import time
 
-# --- INTERFACE ---
-st.title("📚 Grizzly et Moineau : Analyseur de Saga")
+# --- FONCTION DE DÉCOUPAGE ---
+def decouper_texte(texte, taille=5000):
+    """Coupe le texte en morceaux sans couper les mots."""
+    return [texte[i:i+taille] for i in range(0, len(texte), taille)]
 
-uploaded_file = st.file_uploader("Importer un chapitre (.docx)", type="docx")
+# --- LOGIQUE D'ANALYSE PAR BLOCS ---
+def analyser_chapitre_complet(texte_complet):
+    morceaux = decouper_texte(texte_complet)
+    resultats_finaux = {
+        "personnages": set(),
+        "capacites": set(),
+        "armes": set(),
+        "traumas": set(),
+        "lieux": set(),
+        "resumes": []
+    }
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for idx, morceau in enumerate(morceaux):
+        status_text.text(f"Analyse du bloc {idx+1}/{len(morceaux)}...")
+        try:
+            prompt = f"Analyse cet extrait de 'Grizzly et Moineau'. Réponds en JSON : {morceau}"
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt,
+                config={'response_mime_type': 'application/json'}
+            )
+            data = json.loads(response.text)
+            
+            # Fusion des listes (on utilise des sets pour éviter les doublons)
+            for cle in ["personnages", "capacites", "armes", "traumas", "lieux"]:
+                if cle in data:
+                    resultats_finaux[cle].update(data[cle])
+            
+            if "resume" in data:
+                resultats_finaux["resumes"].append(data["resume"])
+                
+            # Petite pause pour ne pas saturer le quota de requêtes par minute
+            time.sleep(2) 
+            
+        except Exception as e:
+            st.error(f"Erreur sur le bloc {idx+1} : {e}")
+            
+        progress_bar.progress((idx + 1) / len(morceaux))
 
+    status_text.text("Analyse terminée !")
+    return resultats_finaux
+
+# --- INTERFACE MISE À JOUR ---
 if uploaded_file:
     full_text = read_docx(uploaded_file)
-    st.info(f"Texte chargé : {len(full_text)} caractères.")
-    
-    if st.button("🚀 LANCER L'ANALYSE"):
-        with st.spinner("Analyse en cours..."):
-            res = analyser_texte(full_text)
+    if st.button("🚀 LANCER L'ANALYSE COMPLÈTE"):
+        res = analyser_chapitre_complet(full_text)
+        
+        # Affichage du résumé fusionné
+        st.subheader("📝 Résumé Global")
+        st.info(" ".join(res["resumes"]))
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**👤 Personnages**")
+            for p in sorted(res["personnages"]):
+                st.markdown(f'<span class="tag">{p}</span>', unsafe_allow_html=True)
             
-            if "error" in res:
-                st.error(f"Erreur IA : {res['error']}")
-            else:
-                st.success("Analyse terminée !")
-                
-                # --- AFFICHAGE DES RÉSULTATS (Indentation critique ici) ---
-                st.subheader("📝 Résumé du Chapitre")
-                st.info(res.get('resume', 'Aucun résumé généré.'))
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write("**👤 Personnages**")
-                    persos = res.get('personnages', [])
-                    if persos:
-                        for p in persos:
-                            st.markdown(f'<span class="tag">{p}</span>', unsafe_allow_html=True)
-                    else:
-                        st.write("_Aucun détecté_")
-                    
-                    st.write("**✨ Capacités & Armes**")
-                    items = res.get('capacites', []) + res.get('armes', [])
-                    for i in items:
-                        st.markdown(f'<span class="tag">{i}</span>', unsafe_allow_html=True)
+            st.write("**✨ Capacités & Armes**")
+            for i in sorted(list(res["capacites"]) + list(res["armes"])):
+                st.markdown(f'<span class="tag">{i}</span>', unsafe_allow_html=True)
 
-                with col2:
-                    st.write("**🧠 Thèmes & Traumas**")
-                    traumas = res.get('traumas', [])
-                    for t in traumas:
-                        st.markdown(f'<span class="tag">{t}</span>', unsafe_allow_html=True)
-                    
-                    st.write("**📍 Lieux**")
-                    lieux = res.get('lieux', [])
-                    for l in lieux:
-                        st.markdown(f'<span class="tag">{l}</span>', unsafe_allow_html=True)
+        with col2:
+            st.write("**🧠 Thèmes & Traumas**")
+            for t in sorted(res["traumas"]):
+                st.markdown(f'<span class="tag">{t}</span>', unsafe_allow_html=True)
+            
+            st.write("**📍 Lieux**")
+            for l in sorted(res["lieux"]):
+                st.markdown(f'<span class="tag">{l}</span>', unsafe_allow_html=True)
