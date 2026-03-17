@@ -1,42 +1,19 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai # Nouvelle syntaxe
 import json
 from docx import Document
-import io
 
-# --- CONFIGURATION API SÉCURISÉE ---
-# On récupère la clé depuis les Secrets de Streamlit (plus de leak !)
+# --- CONFIGURATION API ---
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=API_KEY)
+    client = genai.Client(api_key=API_KEY) # Nouveau client
 except Exception:
-    st.error("Clé API manquante. Configurez 'GOOGLE_API_KEY' dans les Secrets de Streamlit.")
+    st.error("Configurez 'GOOGLE_API_KEY' dans les Secrets Streamlit.")
     st.stop()
 
-# --- CONFIGURATION PAGE ---
+# --- STYLE & CONFIG PAGE ---
 st.set_page_config(page_title="Grizzly et Moineau - Bible Pro", layout="wide")
-# ... le reste du code reste identique ...
-
-# --- STYLE CSS ---
-st.markdown("""
-    <style>
-    .main { background-color: #0f172a; }
-    .stApp { background-color: #0f172a; color: #f1f5f9; }
-    .tag { display: inline-block; padding: 4px 12px; border-radius: 20px; background: #0f172a; border: 1px solid #38bdf8; margin: 4px; color: #38bdf8; font-size: 0.85rem; }
-    h1, h2, h3 { color: #38bdf8 !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- SIDEBAR DIAGNOSTIC ---
-with st.sidebar:
-    st.title("🛠️ Outils")
-    if st.button("🔍 Tester la connexion API"):
-        try:
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            st.success("Connexion établie !")
-            st.json(available_models)
-        except Exception as e:
-            st.error(f"Erreur : {e}")
+st.markdown("<style>.stApp { background-color: #0f172a; color: #f1f5f9; }</style>", unsafe_allow_html=True)
 
 # --- FONCTIONS ---
 def read_docx(file):
@@ -44,53 +21,33 @@ def read_docx(file):
     return '\n'.join([p.text for p in doc.paragraphs])
 
 def analyser_texte(texte):
-    # Tentative de récupération dynamique du modèle
     try:
-        models = [m.name for m in genai.list_models() if 'flash' in m.name.lower()]
-        target_model = models[0] if models else 'gemini-1.5-flash'
-        
-        model = genai.GenerativeModel(target_model)
-        
-        prompt = f"""Analyse cet extrait de 'Grizzly et Moineau'.
-        Réponds UNIQUEMENT en JSON pur :
-        {{"personnages":[], "capacites":[], "armes":[], "traumas":[], "lieux":[], "resume":""}}
-        Texte : {texte[:5000]}"""
-
-        response = model.generate_content(
-            prompt,
-            safety_settings=[
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-            ]
+        # Nouvelle façon d'appeler Gemini 2.0
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=f"Analyse ce texte de Grizzly et Moineau et réponds en JSON : {texte[:8000]}",
+            config={
+                'response_mime_type': 'application/json', # Plus besoin de nettoyer le markdown !
+            }
         )
-        # Nettoyage et parsing
-        clean_res = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(clean_res)
+        return json.loads(response.text)
     except Exception as e:
         return {"error": str(e)}
 
-# --- UI PRINCIPALE ---
+# --- UI ---
 st.title("📚 Grizzly et Moineau : Analyseur de Saga")
 
-tab1, tab2 = st.tabs(["🔍 Analyse Chapitre", "👥 Persos"])
-
-with tab1:
-    uploaded_file = st.file_uploader("Importer un .docx", type="docx")
-    if uploaded_file:
-        full_text = read_docx(uploaded_file)
-        st.info(f"Texte chargé ({len(full_text)} caractères).")
-        
-        if st.button("🚀 LANCER L'ANALYSE"):
-            with st.spinner("Analyse en cours..."):
-                res = analyser_texte(full_text)
-                
-                if "error" in res:
-                    st.error(f"L'IA a rencontré un problème : {res['error']}")
-                else:
-                    st.subheader("📝 Résumé")
-                    st.write(res['resume'])
+uploaded_file = st.file_uploader("Importer un chapitre (.docx)", type="docx")
+if uploaded_file:
+    full_text = read_docx(uploaded_file)
+    if st.button("🚀 LANCER L'ANALYSE"):
+        with st.spinner("Analyse 2.0 en cours..."):
+            res = analyser_texte(full_text)
+            if "error" in res:
+                st.error(res["error"])
+            else:
+                st.success("Analyse terminée !")
+                st.write(res) # Affiche le JSON proprement
                     
                     col1, col2 = st.columns(2)
                     with col1:
