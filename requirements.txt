@@ -2,3 +2,4 @@ streamlit
 pandas
 mistralai
 st-gsheets-connection
+pypdf2
