@@ -5,15 +5,51 @@ from docx import Document
 import io
 
 # --- CONFIGURATION API ---
-# Ta clé est directement intégrée ici
 API_KEY = "AIzaSyAVOZz6MuW_ml4GbvLyUaQUGyNLSmTTrWs"
 genai.configure(api_key=API_KEY)
 
-# --- CONFIGURATION PAGE ---
-st.set_page_config(
-    page_title="Grizzly et Moineau - Bible Pro",
-    page_icon="📚",
-    layout="wide"
+# --- BOUTON DE DIAGNOSTIC (À placer au début de l'app) ---
+if st.sidebar.button("🔍 Tester la connexion API"):
+    try:
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        st.sidebar.write("Modèles accessibles :")
+        st.sidebar.json(models)
+    except Exception as e:
+        st.sidebar.error(f"Erreur de clé : {e}")
+
+# --- LOGIQUE D'ANALYSE ULTRA-ROBUSTE ---
+def analyser_texte(texte):
+    # On récupère dynamiquement le premier modèle Flash disponible
+    try:
+        available_models = [m.name for m in genai.list_models() 
+                           if 'generateContent' in m.supported_generation_methods 
+                           and 'flash' in m.name.lower()]
+        
+        if not available_models:
+            raise Exception("Aucun modèle 'Flash' trouvé pour cette clé.")
+            
+        # On prend le premier de la liste (souvent le plus récent)
+        target_model = available_models[0]
+        model = genai.GenerativeModel(target_model)
+        
+        prompt = f"""Analyse cet extrait de 'Grizzly et Moineau'.
+        Réponds UNIQUEMENT en JSON :
+        {{"personnages":[], "capacites":[], "armes":[], "traumas":[], "lieux":[], "resume":""}}
+        Texte : {texte[:5000]}"""
+
+        response = model.generate_content(
+            prompt,
+            safety_settings=[
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+        )
+        return json.loads(response.text.replace('```json', '').replace('```', '').strip())
+        
+    except Exception as e:
+        raise Exception(f"Détail : {str(e)}")
 )
 
 # --- STYLE CSS (CORRIGÉ) ---
