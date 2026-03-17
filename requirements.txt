@@ -1,5 +1,6 @@
 streamlit
 pandas
-mistralai
+mistralai==1.2.6
 st-gsheets-connection
 pypdf2
+ntplib
