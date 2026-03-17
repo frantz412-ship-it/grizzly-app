@@ -1,159 +1,93 @@
 import streamlit as st
-import datetime
-try:
-    import ntplib
-    NTP_AVAILABLE = True
-except ImportError:
-    NTP_AVAILABLE = False
+import google.generativeai as genai
+import json
+from docx import Document
+import io
 
-# === Import Mistral ===
-try:
-    import mistralai
-    MISTRAL_AVAILABLE = True
-except ImportError:
-    MISTRAL_AVAILABLE = False
+# --- CONFIGURATION ---
+API_KEY = "AIzaSyAVOZz6MuW_ml4GbvLyUaQUGyNLSmTTrWs"
+genai.configure(api_key=API_KEY)
 
-# === Configuration Streamlit ===
-st.set_page_config(page_title="Mistral Chat", layout="wide")
-st.title("💬 Assistant Mistral")
+st.set_page_config(page_title="Grizzly et Moineau - Bible Pro", layout="wide")
 
-def sync_time():
-    """Synchronise l'heure avec un serveur NTP"""
-    if NTP_AVAILABLE:
-        try:
-            client = ntplib.NTPClient()
-            response = client.request('pool.ntp.org', version=3)
-            return datetime.datetime.fromtimestamp(response.tx_time)
-        except Exception as e:
-            st.error(f"Erreur de synchronisation NTP: {e}")
-            return datetime.datetime.now()
-    else:
-        st.warning("NTP non disponible. Installez ntplib: pip install ntplib")
-        return datetime.datetime.now()
+# --- STYLE PERSONNALISÉ ---
+st.markdown("""
+    <style>
+    .main { background-color: #0f172a; }
+    .stTextArea textarea { background-color: #000; color: #38bdf8; }
+    .tag { display: inline-block; padding: 2px 10px; border-radius: 10px; background: #1e293b; border: 1px solid #38bdf8; margin: 2px; font-size: 0.8rem; }
+    </style>
+    """, unsafe_allow_stdio=True)
 
-# === Initialisation État Session ===
-def init_session_state():
-    """Initialise les variables de session"""
-    if "client" not in st.session_state:
-        st.session_state.client = None
-    if "connected" not in st.session_state:
-        st.session_state.connected = False
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "error" not in st.session_state:
-        st.session_state.error = None
+# --- FONCTION DE LECTURE DOCX ---
+def read_docx(file):
+    doc = Document(file)
+    full_text = []
+    for para in doc.paragraphs:
+        full_text.append(para.text)
+    return '\n'.join(full_text)
 
-init_session_state()
-
-# === Sidebar Configuration ===
-with st.sidebar:
-    st.subheader("⚙️ Configuration")
+# --- LOGIQUE D'ANALYSE ---
+def analyser_texte(texte):
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    prompt = f"""Tu es l'expert de la saga 'Grizzly et Moineau'. Analyse cet extrait de chapitre.
+    Identifie : Personnages, Capacités, Armes, Traumas, Lieux.
+    Réponds UNIQUEMENT en JSON :
+    {{"personnages":[], "capacites":[], "armes":[], "traumas":[], "lieux":[], "resume":""}}
+    Texte : {texte[:4000]}""" # On limite à 4000 caractères pour la stabilité
     
-    if not MISTRAL_AVAILABLE:
-        st.error("Mistral non installé. Exécutez: `pip install mistralai`")
-    else:
-        api_key = st.text_input("🔑 Clé API Mistral", type="password", key="api_key_input")
-        model = st.selectbox("🤖 Modèle", ["mistral-tiny", "mistral-small", "mistral-medium"])
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("🔗 Connecter", use_container_width=True):
-                if not api_key:
-                    st.session_state.error = "Veuillez entrer une clé API"
-                    st.error(st.session_state.error)
-                else:
-                    try:
-                        client = mistralai.Mistral(api_key=api_key)
-                        # Test connexion avec une requête simple
-                        response = client.chat.complete(
-                            model=model,
-                            messages=[{"role": "user", "content": "Hello"}]
-                        )
-                        st.session_state.client = client
-                        st.session_state.connected = True
-                        st.session_state.error = None
-                        st.success("✅ Connecté!")
-                    except Exception as e:
-                        st.session_state.error = str(e)
-                        st.session_state.connected = False
-                        st.error(f"Erreur: {str(e)[:100]}")
-        
-        with col2:
-            if st.button("🔌 Déconnecter", use_container_width=True):
-                st.session_state.client = None
-                st.session_state.connected = False
-                st.session_state.messages = []
-                st.session_state.error = None
-                st.rerun()
-        
-        # Status
-        if st.session_state.connected:
-            st.success("🟢 Connecté au modèle: " + model)
-        else:
-            st.warning("🔴 Non connecté")
-    
-    # Section Synchronisation Temps
-    st.subheader("⏰ Synchronisation Temps")
-    current_time = datetime.datetime.now()
-    st.write(f"Heure actuelle: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    if st.button("🔄 Synchroniser l'heure", use_container_width=True):
-        synced_time = sync_time()
-        st.success(f"Heure synchronisée: {synced_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        # Note: Cela ne change pas l'heure système, juste pour affichage
+    response = model.generate_content(
+        prompt,
+        safety_settings=[
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+    )
+    return json.loads(response.text.replace('```json', '').replace('```', ''))
 
-# === Chat Principal ===
-if not MISTRAL_AVAILABLE:
-    st.info("Installez Mistral pour activer le chat")
-elif not st.session_state.connected:
-    st.info("👈 Connectez-vous via la barre latérale pour commencer")
-else:
-    # Afficher historique
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            if "timestamp" in msg:
-                timestamp_str = msg["timestamp"].strftime("%H:%M:%S")
-                st.markdown(f"**{timestamp_str}** - {msg['content']}")
-            else:
-                st.markdown(msg["content"])
+# --- INTERFACE ---
+st.title("📚 Grizzly et Moineau : Gestionnaire de Chapitres")
+
+tab1, tab2 = st.tabs(["🔍 Analyse de Fichier", "👥 Personnages"])
+
+with tab1:
+    st.subheader("Importer un Chapitre (.docx)")
+    uploaded_file = st.file_uploader("Choisis ton fichier Word", type="docx")
     
-    # Entrée utilisateur
-    if prompt := st.chat_input("Écrivez votre message..."):
-        st.session_state.messages.append({
-            "role": "user", 
-            "content": prompt,
-            "timestamp": datetime.datetime.now()
-        })
+    if uploaded_file is not None:
+        texte_complet = read_docx(uploaded_file)
+        st.info(f"Fichier chargé : {len(texte_complet)} caractères détectés.")
         
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Réponse Mistral
-        with st.chat_message("assistant"):
-            try:
-                response_placeholder = st.empty()
-                full_response = ""
-                
-                # Filtrer les messages pour l'API (seulement role et content)
-                api_messages = [{"role": msg["role"], "content": msg["content"]} for msg in st.session_state.messages]
-                
-                for chunk in st.session_state.client.chat.stream(
-                    model=model,
-                    messages=api_messages
-                ):
-                    if chunk.choices[0].delta.content:
-                        full_response += chunk.choices[0].delta.content
-                        response_placeholder.markdown(full_response + "▌")
-                
-                response_placeholder.markdown(full_response)
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": full_response,
-                    "timestamp": datetime.datetime.now()
-                })
-            
-            except Exception as e:
-                st.error(f"Erreur: {str(e)}")
-                if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-                    st.session_state.messages.pop()
+        # Aperçu du début du texte
+        with st.expander("Voir l'aperçu du texte"):
+            st.write(texte_complet[:1000] + "...")
+
+        if st.button("Lancer l'Analyse Intelligente"):
+            with st.spinner("L'IA parcourt ton chapitre..."):
+                try:
+                    res = analyser_texte(texte_complet)
+                    
+                    # AFFICHAGE DES RÉSULTATS
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**👤 Personnages :**")
+                        st.write(", ".join(res['personnages']))
+                        st.write("**✨ Capacités & Armes :**")
+                        st.write(", ".join(res['capacites'] + res['armes']))
+                    
+                    with col2:
+                        st.write("**🧠 Thèmes & Traumas :**")
+                        st.write(", ".join(res['traumas']))
+                        st.write("**📍 Lieux :**")
+                        st.write(", ".join(res['lieux']))
+                    
+                    st.divider()
+                    st.write("**📝 Résumé du chapitre :**")
+                    st.info(res['resume'])
+                    
+                except Exception as e:
+                    st.error(f"Erreur d'analyse : {e}")
+
+with tab2:
+    st.write("Ici tu pourras voir l'évolution de Lo, Jonas et les autres au fil des tomes.")
