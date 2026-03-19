@@ -29,23 +29,15 @@ INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manu
 import json
 
 def connecter_gsheet():
-    """Connexion directe via dictionnaire pour éviter les erreurs d'encodage"""
     try:
-        # 1. On récupère les secrets sous forme de dictionnaire simple
-        creds_info = dict(st.secrets["gcp_service_account"])
+        # On charge le JSON brut directement depuis les secrets
+        creds_info = json.loads(st.secrets["GCP_JSON_BRUT"], strict=False)
         
-        # 2. Nettoyage de la clé (on enlève les guillemets et on gère les sauts de ligne)
-        if "private_key" in creds_info:
-            pk = creds_info["private_key"]
-            # On répare au cas où des \n traîneraient encore
-            pk = pk.replace("\\n", "\n").strip().strip('"').strip("'")
-            creds_info["private_key"] = pk
-
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # On ouvre la feuille "Feuille 1"
+        # Ouvre la feuille via l'ID
         return client.open_by_key(SHEET_ID).sheet1
     except Exception as e:
         st.error(f"❌ Erreur de connexion Cloud : {e}")
