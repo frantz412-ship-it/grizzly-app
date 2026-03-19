@@ -27,23 +27,27 @@ INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manu
 # --- 2. FONCTIONS TECHNIQUES (MODE CLOUD) ---
 
 def connecter_gsheet():
-    """Connexion sécurisée avec réparation automatique de la clé PEM"""
     try:
-        # On convertit les secrets en dictionnaire modifiable
+        # On récupère les secrets
         creds_info = dict(st.secrets["gcp_service_account"])
         
-        # RÉPARATION DE LA CLÉ : On force le remplacement des \n textuels par des vrais sauts de ligne
         if "private_key" in creds_info:
-            creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-        
+            pk = creds_info["private_key"]
+            # 1. On nettoie les guillemets et les \n de texte
+            pk = pk.replace("\\n", "\n").strip().strip('"').strip("'")
+            
+            # 2. Sécurité PEM : Si la clé est sur une seule ligne (hors header/footer), 
+            # on ne touche à rien, le from_service_account_info s'en occupe souvent.
+            # Mais si l'erreur persiste, c'est le format des secrets qu'il faut changer.
+            creds_info["private_key"] = pk
+
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         return client.open_by_key(SHEET_ID).sheet1
     except Exception as e:
-        st.error(f"❌ Erreur de connexion au Cloud Google : {e}")
+        st.error(f"❌ Erreur PEM persistante : {e}")
         return None
-
 def extraire_texte(f):
     """Lecteur universel : PDF, DOCX et ODT"""
     try:
