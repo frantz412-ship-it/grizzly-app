@@ -28,26 +28,37 @@ INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manu
 
 def connecter_gsheet():
     try:
-        # On récupère les secrets
+        # 1. On récupère les secrets sous forme de dictionnaire
         creds_info = dict(st.secrets["gcp_service_account"])
         
+        # 2. NETTOYAGE CHIRURGICAL DE LA CLÉ
         if "private_key" in creds_info:
             pk = creds_info["private_key"]
-            # 1. On nettoie les guillemets et les \n de texte
-            pk = pk.replace("\\n", "\n").strip().strip('"').strip("'")
             
-            # 2. Sécurité PEM : Si la clé est sur une seule ligne (hors header/footer), 
-            # on ne touche à rien, le from_service_account_info s'en occupe souvent.
-            # Mais si l'erreur persiste, c'est le format des secrets qu'il faut changer.
+            # On gère les deux cas : sauts de ligne réels ou symboles "\n"
+            pk = pk.replace("\\n", "\n")
+            
+            # On nettoie les espaces parasites au début et à la fin de chaque ligne
+            lines = [line.strip() for line in pk.split('\n') if line.strip()]
+            pk = "\n".join(lines)
+            
+            # On s'assure que les balises BEGIN/END sont sur leurs propres lignes
+            if not pk.startswith("-----BEGIN"):
+                pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+            if not pk.endswith("-----END PRIVATE KEY-----"):
+                pk = pk + "\n-----END PRIVATE KEY-----"
+                
             creds_info["private_key"] = pk
 
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         return client.open_by_key(SHEET_ID).sheet1
+        
     except Exception as e:
-        st.error(f"❌ Erreur PEM persistante : {e}")
+        st.error(f"❌ Échec de la réparation PEM : {e}")
         return None
+        
 def extraire_texte(f):
     """Lecteur universel : PDF, DOCX et ODT"""
     try:
