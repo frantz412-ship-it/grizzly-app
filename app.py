@@ -11,40 +11,36 @@ from odf.text import P
 from odf.teletype import extractText
 import io
 import datetime
-from dotenv import load_dotenv
 
-# --- 1. CHARGEMENT & CONFIGURATION ---
-load_dotenv()
-
-# ID de votre feuille Google Sheet (déjà configuré)
+# --- 1. CONFIGURATION MAÎTRE ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
-# Verrou de vérité pour empêcher l'IA d'inverser les personnages
 VERROU_SAGA = """
 VÉRITÉS ABSOLUES À RESPECTER :
 - JONAS est le GRIZZLY (Protecteur, Chasseur).
 - LÉO est le MOINEAU (Guide, Fils de lumière).
 - ZACK est GAZ (Survivant, Couple asexuel avec Jade).
 - AUTYSSÉ est le CARTOGRAPHE (TSA, Profil Colonnes).
-INTERDICTION : Ne jamais inventer de soeur (Mira) ou de lieux non cités.
+INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manuscrit.
 """
 
-# --- 2. FONCTIONS TECHNIQUES ---
+# --- 2. FONCTIONS TECHNIQUES (MODE CLOUD) ---
 
 def connecter_gsheet():
-    """Établit la connexion avec Google Sheets via credentials.json"""
+    """Connexion sécurisée via les Secrets Streamlit"""
     try:
+        # On pioche dans le coffre-fort 'gcp_service_account' des Secrets
+        creds_info = st.secrets["gcp_service_account"]
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # Assurez-vous que credentials.json est dans le dossier grizzly-app
-        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         return client.open_by_key(SHEET_ID).sheet1
     except Exception as e:
-        st.error(f"❌ Erreur de connexion Cloud : {e}")
+        st.error(f"❌ Erreur de connexion au Cloud Google : {e}")
         return None
 
 def extraire_texte(f):
-    """Lit le contenu des fichiers PDF, DOCX et ODT"""
+    """Lecteur universel : PDF, DOCX et ODT"""
     try:
         if f.name.endswith(".pdf"):
             with pdfplumber.open(f) as pdf:
@@ -60,114 +56,98 @@ def extraire_texte(f):
         return ""
 
 def appel_ia(prompt):
-    """Envoie la requête à Mistral avec gestion d'erreurs robuste"""
-    api_key = os.getenv("MISTRAL_API_KEY")
-    if not api_key:
-        return "❌ Clé API manquante dans le fichier .env"
-    
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": "mistral-large-latest", 
-        "messages": [{"role": "user", "content": prompt}], 
-        "temperature": 0.0
-    }
-    
+    """Appel Mistral via le secret MISTRAL_API_KEY"""
     try:
-        r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
-        r.raise_for_status() # Déclenche une erreur si 401, 404, 500
-        data = r.json()
+        # On récupère la clé dans le coffre-fort Streamlit
+        api_key = st.secrets["MISTRAL_API_KEY"]
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "mistral-large-latest", 
+            "messages": [{"role": "user", "content": prompt}], 
+            "temperature": 0.0
+        }
         
-        if "choices" in data:
-            return data["choices"][0]["message"]["content"]
-        else:
-            return f"⚠️ Format de réponse inconnu : {data}"
+        r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
+        r.raise_for_status() 
+        data = r.json()
+        return data["choices"][0]["message"]["content"]
             
-    except requests.exceptions.HTTPError as http_err:
-        if r.status_code == 401:
-            return "❌ Erreur 401 : Votre clé Mistral est invalide ou mal copiée dans le fichier .env."
-        return f"❌ Erreur HTTP {r.status_code} : {r.text}"
     except Exception as e:
-        return f"❌ Erreur technique : {str(e)}"
+        return f"❌ Erreur IA : {str(e)}"
 
-# --- 3. INTERFACE STREAMLIT ---
+# --- 3. INTERFACE UTILISATEUR STREAMLIT ---
 
-st.set_page_config(page_title="L'Archiviste V6.7", layout="wide")
-st.title("🛡️ L'Archiviste : Gestion de Saga")
-
-# Diagnostic de clé (visible uniquement pour debug)
-with st.expander("🔍 État du système"):
-    key = os.getenv("MISTRAL_API_KEY", "")
-    st.write(f"Clé API chargée : {'✅ Oui' if key else '❌ Non'}")
-    st.write(f"Longueur de la clé : {len(key)} caractères")
+st.set_page_config(page_title="L'Archiviste V7.0", layout="wide")
+st.title("🛡️ L'Archiviste : Mémoire de la Saga")
 
 # Barre latérale
 st.sidebar.header("📁 Sources & Historique")
-fichiers = st.sidebar.file_uploader("Charger manuscrits (PDF, ODT, DOCX)", accept_multiple_files=True)
-nom_perso = st.sidebar.selectbox("Personnage à analyser", ["Zack", "Léo", "Jonas", "Autyssé"])
+fichiers = st.sidebar.file_uploader("Charger manuscrits", type=["pdf", "odt", "docx"], accept_multiple_files=True)
+nom_perso = st.sidebar.selectbox("Personnage à traiter", ["Zack", "Léo", "Jonas", "Autyssé"])
 
-if st.sidebar.button(f"📥 Récupérer Bible Cloud ({nom_perso})"):
+if st.sidebar.button(f"📥 Charger Historique Cloud ({nom_perso})"):
     sheet = connecter_gsheet()
     if sheet:
-        records = sheet.get_all_records()
-        histo = next((r['Bible_Contenu'] for r in reversed(records) if r['Personnage'] == nom_perso), "Nouveau profil.")
-        st.session_state.historique = histo
-        st.sidebar.success("Dernière version chargée !")
+        with st.spinner("Récupération de la dernière Bible..."):
+            records = sheet.get_all_records()
+            histo = next((r['Bible_Contenu'] for r in reversed(records) if r['Personnage'] == nom_perso), "Nouveau profil.")
+            st.session_state.historique = histo
+            st.sidebar.success("Dernière version chargée !")
 
 # Zone principale
 if fichiers:
-    st.info(f"{len(fichiers)} fichiers chargés. Prêt pour l'analyse de {nom_perso}.")
+    st.info(f"✅ {len(fichiers)} fichiers prêts pour l'analyse de {nom_perso}.")
     
-    if st.button(f"🚀 Lancer l'Analyse Evolutive ({nom_perso})"):
-        with st.spinner("Lecture des fichiers et analyse en cours..."):
-            # Extraction du texte
+    if st.button(f"🚀 Analyser & Mettre à jour {nom_perso}"):
+        with st.spinner("L'archiviste traite vos chapitres..."):
+            # Définition des alias pour le filtre
             alias_map = {
                 "Zack": ["Zack", "Gaz", "Loulou"],
                 "Léo": ["Léo", "Moineau", "Leo"],
-                "Jonas": ["Jonas", "Grizzly", "Jojo"],
+                "Jonas": ["Jonas", "Grizzly"],
                 "Autyssé": ["Autyssé", "Auty", "Autysse"]
             }
             
+            # Extraction des passages pertinents
             passages = []
             for f in fichiers:
-                texte_complet = extraire_texte(f).replace("’", "'")
-                # On cherche les paragraphes qui contiennent le nom ou les alias
-                lignes = texte_complet.split('\n')
+                texte_brut = extraire_texte(f).replace("’", "'")
+                lignes = texte_brut.split('\n')
                 for ligne in lignes:
                     if any(re.search(r'\b' + re.escape(alias) + r'\b', ligne, re.IGNORECASE) for alias in alias_map[nom_perso]):
-                        if len(ligne.strip()) > 50: # On ignore les lignes trop courtes
+                        if len(ligne.strip()) > 50:
                             passages.append(ligne.strip())
 
-            # Préparation du prompt
-            historique_existant = st.session_state.get('historique', "Aucun historique disponible.")
-            contexte_manuscrit = "\n\n".join(passages[:25]) # On limite pour ne pas saturer l'IA
+            # Construction de la requête
+            historique_existant = st.session_state.get('historique', "Pas d'historique connu.")
+            contexte_manuscrit = "\n\n".join(passages[:25]) # On prend les 25 extraits les plus denses
             
             prompt_final = f"""
             {VERROU_SAGA}
             
-            CONTEXTE HISTORIQUE (Bible précédente) :
+            CONTEXTE PRÉCÉDENT (Bible) :
             {historique_existant}
             
-            NOUVEAUX ÉLÉMENTS DU MANUSCRIT :
+            NOUVEAUX EXTRAITS :
             {contexte_manuscrit}
             
             MISSION :
-            Tu es l'archiviste expert. Mets à jour la Bible de {nom_perso}. 
-            Analyse son évolution psychologique, ses traumas et sa montée en souveraineté.
-            Structure ta réponse par sections : 1. Origine, 2. État Somatique, 3. Évolution Narrative.
+            Mets à jour la Bible de {nom_perso}. Analyse son évolution psychologique, ses traumas et sa souveraineté.
+            Structure : 1. Origine, 2. État Somatique, 3. Évolution Narrative.
             """
             
             resultat = appel_ia(prompt_final)
             st.session_state.derniere_bible = resultat
 
-# Affichage des résultats
+# Affichage et Sauvegarde
 if "derniere_bible" in st.session_state:
     st.divider()
     st.subheader(f"📖 Bible mise à jour : {nom_perso}")
     st.markdown(st.session_state.derniere_bible)
     
-    if st.button("💾 Envoyer cette version sur Google Sheets"):
+    if st.button("💾 Sauvegarder sur Google Sheets"):
         sheet = connecter_gsheet()
         if sheet:
             maintenant = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
             sheet.append_row([nom_perso, maintenant, st.session_state.derniere_bible])
-            st.success("Synchronisation avec le Cloud réussie !")
+            st.success("✅ Synchronisation réussie !")
