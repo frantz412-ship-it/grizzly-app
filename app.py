@@ -1,121 +1,173 @@
+import os
+import re
+import requests
+import gspread
+from google.oauth2.service_account import Credentials
 import streamlit as st
-import json
 from docx import Document
-import time
+import pdfplumber
+from odf.opendocument import load
+from odf.text import P
+from odf.teletype import extractText
+import io
+import datetime
+from dotenv import load_dotenv
 
-# --- 1. IMPORTATION ROBUSTE DES IA ---
-# Pour Google
-try:
-    from google import genai
-except ImportError:
-    st.error("Erreur : La bibliothèque 'google-genai' est manquante.")
+# --- 1. CHARGEMENT & CONFIGURATION ---
+load_dotenv()
 
-# Pour Mistral (on teste les deux noms de classe possibles en 2026)
-try:
-    from mistralai import Mistral
-except ImportError:
+# ID de votre feuille Google Sheet (déjà configuré)
+SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
+
+# Verrou de vérité pour empêcher l'IA d'inverser les personnages
+VERROU_SAGA = """
+VÉRITÉS ABSOLUES À RESPECTER :
+- JONAS est le GRIZZLY (Protecteur, Chasseur).
+- LÉO est le MOINEAU (Guide, Fils de lumière).
+- ZACK est GAZ (Survivant, Couple asexuel avec Jade).
+- AUTYSSÉ est le CARTOGRAPHE (TSA, Profil Colonnes).
+INTERDICTION : Ne jamais inventer de soeur (Mira) ou de lieux non cités.
+"""
+
+# --- 2. FONCTIONS TECHNIQUES ---
+
+def connecter_gsheet():
+    """Établit la connexion avec Google Sheets via credentials.json"""
     try:
-        from mistralai.client import MistralClient as Mistral
-    except ImportError:
-        st.error("Erreur : La bibliothèque 'mistralai' est manquante ou mal installée.")
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # Assurez-vous que credentials.json est dans le dossier grizzly-app
+        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+        client = gspread.authorize(creds)
+        return client.open_by_key(SHEET_ID).sheet1
+    except Exception as e:
+        st.error(f"❌ Erreur de connexion Cloud : {e}")
+        return None
 
-# --- 2. CONFIGURATION DES CLIENTS ---
-try:
-    # Client Google
-    client_google = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
-    # Client Mistral
-    client_mistral = Mistral(api_key=st.secrets["MISTRAL_API_KEY"])
-except Exception as e:
-    st.warning("⚠️ Une ou plusieurs clés API sont manquantes dans les Secrets.")
+def extraire_texte(f):
+    """Lit le contenu des fichiers PDF, DOCX et ODT"""
+    try:
+        if f.name.endswith(".pdf"):
+            with pdfplumber.open(f) as pdf:
+                return "\n".join([p.extract_text() or "" for p in pdf.pages])
+        elif f.name.endswith(".docx"):
+            doc = Document(f)
+            return "\n".join([p.text for p in doc.paragraphs])
+        elif f.name.endswith(".odt"):
+            return "\n".join([extractText(p) for p in load(f).getElementsByType(P)])
+        return ""
+    except Exception as e:
+        st.error(f"Erreur de lecture sur {f.name} : {e}")
+        return ""
 
-# --- 3. CONFIGURATION UI ---
-st.set_page_config(page_title="Grizzly et Moineau - Hub Multi-IA", layout="wide")
-
-st.markdown("""
-    <style>
-    .stApp { background-color: #0f172a; color: #f1f5f9; }
-    .tag { 
-        display: inline-block; padding: 4px 12px; border-radius: 20px; 
-        background: #1e293b; border: 1px solid #38bdf8; 
-        margin: 4px; color: #38bdf8; font-size: 0.85rem; 
+def appel_ia(prompt):
+    """Envoie la requête à Mistral avec gestion d'erreurs robuste"""
+    api_key = os.getenv("MISTRAL_API_KEY")
+    if not api_key:
+        return "❌ Clé API manquante dans le fichier .env"
+    
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": "mistral-large-latest", 
+        "messages": [{"role": "user", "content": prompt}], 
+        "temperature": 0.0
     }
-    h1, h2, h3 { color: #38bdf8 !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 4. FONCTIONS ---
-def read_docx(file):
-    doc = Document(file)
-    return '\n'.join([p.text for p in doc.paragraphs])
-
-def analyser_bloc(texte, moteur):
-    prompt = f"Analyse cet extrait de 'Grizzly et Moineau'. Extraits en JSON : personnages, capacites, armes, traumas, lieux, resume. Texte : {texte}"
     
-    if "Gemini" in moteur:
-        response = client_google.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt,
-            config={'response_mime_type': 'application/json'}
-        )
-        return json.loads(response.text)
-    else:
-        # Pour Mistral Large
-        response = client_mistral.chat.complete(
-            model="mistral-large-latest",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        # On gère si la réponse est un objet ou une string
-        content = response.choices[0].message.content
-        return json.loads(content) if isinstance(content, str) else content
-
-# --- 5. INTERFACE ---
-st.title("📚 Grizzly et Moineau : Hub d'Analyse")
-
-with st.sidebar:
-    st.header("⚙️ Configuration")
-    moteur_choisi = st.radio(
-        "Choisir l'Intelligence Artificielle :",
-        ["Google Gemini 2.0", "Mistral AI (Large)"]
-    )
-
-uploaded_file = st.file_uploader("Charger un chapitre (.docx)", type="docx")
-
-if uploaded_file:
-    full_text = read_docx(uploaded_file)
-    # Découpage par blocs de 5000 caractères
-    morceaux = [full_text[i:i+5000] for i in range(0, len(full_text), 5000)]
-    
-    if st.button(f"🚀 ANALYSER AVEC {moteur_choisi.upper()}"):
-        resultats_globaux = {
-            "personnages": set(), "capacites": set(), "armes": set(), 
-            "traumas": set(), "lieux": set(), "resumes": []
-        }
+    try:
+        r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
+        r.raise_for_status() # Déclenche une erreur si 401, 404, 500
+        data = r.json()
         
-        progress = st.progress(0)
-        for idx, bloc in enumerate(morceaux):
-            try:
-                data = analyser_bloc(bloc, moteur_choisi)
-                for k in ["personnages", "capacites", "armes", "traumas", "lieux"]:
-                    if k in data and isinstance(data[k], list):
-                        resultats_globaux[k].update(data[k])
-                if "resume" in data:
-                    resultats_globaux["resumes"].append(data["resume"])
-                time.sleep(2) 
-            except Exception as e:
-                st.error(f"Erreur bloc {idx+1}: {e}")
-            progress.progress((idx + 1) / len(morceaux))
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
+        else:
+            return f"⚠️ Format de réponse inconnu : {data}"
+            
+    except requests.exceptions.HTTPError as http_err:
+        if r.status_code == 401:
+            return "❌ Erreur 401 : Votre clé Mistral est invalide ou mal copiée dans le fichier .env."
+        return f"❌ Erreur HTTP {r.status_code} : {r.text}"
+    except Exception as e:
+        return f"❌ Erreur technique : {str(e)}"
 
-        # AFFICHAGE
-        st.subheader("📝 Résumé Global")
-        st.info(" ".join(resultats_globaux["resumes"]))
+# --- 3. INTERFACE STREAMLIT ---
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**👤 Personnages**")
-            for p in sorted(resultats_globaux["personnages"]):
-                st.markdown(f'<span class="tag">{p}</span>', unsafe_allow_html=True)
-        with col2:
-            st.write("**🧠 Thèmes & Traumas**")
-            for t in sorted(resultats_globaux["traumas"]):
-                st.markdown(f'<span class="tag">{t}</span>', unsafe_allow_html=True)
+st.set_page_config(page_title="L'Archiviste V6.7", layout="wide")
+st.title("🛡️ L'Archiviste : Gestion de Saga")
+
+# Diagnostic de clé (visible uniquement pour debug)
+with st.expander("🔍 État du système"):
+    key = os.getenv("MISTRAL_API_KEY", "")
+    st.write(f"Clé API chargée : {'✅ Oui' if key else '❌ Non'}")
+    st.write(f"Longueur de la clé : {len(key)} caractères")
+
+# Barre latérale
+st.sidebar.header("📁 Sources & Historique")
+fichiers = st.sidebar.file_uploader("Charger manuscrits (PDF, ODT, DOCX)", accept_multiple_files=True)
+nom_perso = st.sidebar.selectbox("Personnage à analyser", ["Zack", "Léo", "Jonas", "Autyssé"])
+
+if st.sidebar.button(f"📥 Récupérer Bible Cloud ({nom_perso})"):
+    sheet = connecter_gsheet()
+    if sheet:
+        records = sheet.get_all_records()
+        histo = next((r['Bible_Contenu'] for r in reversed(records) if r['Personnage'] == nom_perso), "Nouveau profil.")
+        st.session_state.historique = histo
+        st.sidebar.success("Dernière version chargée !")
+
+# Zone principale
+if fichiers:
+    st.info(f"{len(fichiers)} fichiers chargés. Prêt pour l'analyse de {nom_perso}.")
+    
+    if st.button(f"🚀 Lancer l'Analyse Evolutive ({nom_perso})"):
+        with st.spinner("Lecture des fichiers et analyse en cours..."):
+            # Extraction du texte
+            alias_map = {
+                "Zack": ["Zack", "Gaz", "Loulou"],
+                "Léo": ["Léo", "Moineau", "Leo"],
+                "Jonas": ["Jonas", "Grizzly", "Jojo"],
+                "Autyssé": ["Autyssé", "Auty", "Autysse"]
+            }
+            
+            passages = []
+            for f in fichiers:
+                texte_complet = extraire_texte(f).replace("’", "'")
+                # On cherche les paragraphes qui contiennent le nom ou les alias
+                lignes = texte_complet.split('\n')
+                for ligne in lignes:
+                    if any(re.search(r'\b' + re.escape(alias) + r'\b', ligne, re.IGNORECASE) for alias in alias_map[nom_perso]):
+                        if len(ligne.strip()) > 50: # On ignore les lignes trop courtes
+                            passages.append(ligne.strip())
+
+            # Préparation du prompt
+            historique_existant = st.session_state.get('historique', "Aucun historique disponible.")
+            contexte_manuscrit = "\n\n".join(passages[:25]) # On limite pour ne pas saturer l'IA
+            
+            prompt_final = f"""
+            {VERROU_SAGA}
+            
+            CONTEXTE HISTORIQUE (Bible précédente) :
+            {historique_existant}
+            
+            NOUVEAUX ÉLÉMENTS DU MANUSCRIT :
+            {contexte_manuscrit}
+            
+            MISSION :
+            Tu es l'archiviste expert. Mets à jour la Bible de {nom_perso}. 
+            Analyse son évolution psychologique, ses traumas et sa montée en souveraineté.
+            Structure ta réponse par sections : 1. Origine, 2. État Somatique, 3. Évolution Narrative.
+            """
+            
+            resultat = appel_ia(prompt_final)
+            st.session_state.derniere_bible = resultat
+
+# Affichage des résultats
+if "derniere_bible" in st.session_state:
+    st.divider()
+    st.subheader(f"📖 Bible mise à jour : {nom_perso}")
+    st.markdown(st.session_state.derniere_bible)
+    
+    if st.button("💾 Envoyer cette version sur Google Sheets"):
+        sheet = connecter_gsheet()
+        if sheet:
+            maintenant = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            sheet.append_row([nom_perso, maintenant, st.session_state.derniere_bible])
+            st.success("Synchronisation avec le Cloud réussie !")
