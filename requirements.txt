@@ -1,4 +1,8 @@
 streamlit
-google-genai
-mistralai
+gspread
+google-auth
+pdfplumber
 python-docx
+odfpy
+requests
+python-dotenv
