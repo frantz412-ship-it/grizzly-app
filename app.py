@@ -25,38 +25,26 @@ INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manu
 """
 
 # --- 2. FONCTIONS TECHNIQUES (MODE CLOUD) ---
-
 def connecter_gsheet():
     try:
-        # 1. On récupère les secrets sous forme de dictionnaire
-        creds_info = dict(st.secrets["gcp_service_account"])
+        # On extrait les secrets dans un dictionnaire standard
+        creds_dict = {k: v for k, v in st.secrets["gcp_service_account"].items()}
         
-        # 2. NETTOYAGE CHIRURGICAL DE LA CLÉ
-        if "private_key" in creds_info:
-            pk = creds_info["private_key"]
-            
-            # On gère les deux cas : sauts de ligne réels ou symboles "\n"
-            pk = pk.replace("\\n", "\n")
-            
-            # On nettoie les espaces parasites au début et à la fin de chaque ligne
-            lines = [line.strip() for line in pk.split('\n') if line.strip()]
-            pk = "\n".join(lines)
-            
-            # On s'assure que les balises BEGIN/END sont sur leurs propres lignes
-            if not pk.startswith("-----BEGIN"):
-                pk = "-----BEGIN PRIVATE KEY-----\n" + pk
-            if not pk.endswith("-----END PRIVATE KEY-----"):
-                pk = pk + "\n-----END PRIVATE KEY-----"
-                
-            creds_info["private_key"] = pk
+        if "private_key" in creds_dict:
+            # On nettoie TOUT : les \n écrits, les espaces et les guillemets
+            pk = creds_dict["private_key"]
+            pk = pk.replace("\\n", "\n") # Change les \n texte en vrais sauts de ligne
+            pk = pk.strip() # Enlève les espaces autour
+            creds_dict["private_key"] = pk
 
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        # Utilisation directe du dictionnaire nettoyé
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         return client.open_by_key(SHEET_ID).sheet1
         
     except Exception as e:
-        st.error(f"❌ Échec de la réparation PEM : {e}")
+        st.error(f"❌ Erreur PEM persistante : {e}")
         return None
         
 def extraire_texte(f):
