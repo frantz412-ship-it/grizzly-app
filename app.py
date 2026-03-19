@@ -27,10 +27,15 @@ INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manu
 # --- 2. FONCTIONS TECHNIQUES (MODE CLOUD) ---
 
 def connecter_gsheet():
-    """Connexion sécurisée via les Secrets Streamlit"""
+    """Connexion sécurisée avec réparation automatique de la clé PEM"""
     try:
-        # On pioche dans le coffre-fort 'gcp_service_account' des Secrets
-        creds_info = st.secrets["gcp_service_account"]
+        # On convertit les secrets en dictionnaire modifiable
+        creds_info = dict(st.secrets["gcp_service_account"])
+        
+        # RÉPARATION DE LA CLÉ : On force le remplacement des \n textuels par des vrais sauts de ligne
+        if "private_key" in creds_info:
+            creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
@@ -58,7 +63,6 @@ def extraire_texte(f):
 def appel_ia(prompt):
     """Appel Mistral via le secret MISTRAL_API_KEY"""
     try:
-        # On récupère la clé dans le coffre-fort Streamlit
         api_key = st.secrets["MISTRAL_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         payload = {
@@ -77,7 +81,7 @@ def appel_ia(prompt):
 
 # --- 3. INTERFACE UTILISATEUR STREAMLIT ---
 
-st.set_page_config(page_title="L'Archiviste V7.0", layout="wide")
+st.set_page_config(page_title="L'Archiviste V7.1", layout="wide")
 st.title("🛡️ L'Archiviste : Mémoire de la Saga")
 
 # Barre latérale
@@ -100,7 +104,6 @@ if fichiers:
     
     if st.button(f"🚀 Analyser & Mettre à jour {nom_perso}"):
         with st.spinner("L'archiviste traite vos chapitres..."):
-            # Définition des alias pour le filtre
             alias_map = {
                 "Zack": ["Zack", "Gaz", "Loulou"],
                 "Léo": ["Léo", "Moineau", "Leo"],
@@ -108,7 +111,6 @@ if fichiers:
                 "Autyssé": ["Autyssé", "Auty", "Autysse"]
             }
             
-            # Extraction des passages pertinents
             passages = []
             for f in fichiers:
                 texte_brut = extraire_texte(f).replace("’", "'")
@@ -118,28 +120,14 @@ if fichiers:
                         if len(ligne.strip()) > 50:
                             passages.append(ligne.strip())
 
-            # Construction de la requête
             historique_existant = st.session_state.get('historique', "Pas d'historique connu.")
-            contexte_manuscrit = "\n\n".join(passages[:25]) # On prend les 25 extraits les plus denses
+            contexte_manuscrit = "\n\n".join(passages[:25])
             
-            prompt_final = f"""
-            {VERROU_SAGA}
-            
-            CONTEXTE PRÉCÉDENT (Bible) :
-            {historique_existant}
-            
-            NOUVEAUX EXTRAITS :
-            {contexte_manuscrit}
-            
-            MISSION :
-            Mets à jour la Bible de {nom_perso}. Analyse son évolution psychologique, ses traumas et sa souveraineté.
-            Structure : 1. Origine, 2. État Somatique, 3. Évolution Narrative.
-            """
+            prompt_final = f"{VERROU_SAGA}\n\nHISTO: {historique_existant}\n\nEXTRAITS: {contexte_manuscrit}\n\nMISSION: Mise à jour Bible."
             
             resultat = appel_ia(prompt_final)
             st.session_state.derniere_bible = resultat
 
-# Affichage et Sauvegarde
 if "derniere_bible" in st.session_state:
     st.divider()
     st.subheader(f"📖 Bible mise à jour : {nom_perso}")
