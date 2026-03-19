@@ -2,15 +2,16 @@ import os
 import re
 import requests
 import gspread
-from google.oauth2.service_account import Credentials
+import json
 import streamlit as st
-from docx import Document
 import pdfplumber
+import io
+import datetime
+from google.oauth2.service_account import Credentials
+from docx import Document
 from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
-import io
-import datetime
 
 # --- 1. CONFIGURATION MAÎTRE ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
@@ -24,25 +25,25 @@ VÉRITÉS ABSOLUES À RESPECTER :
 INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manuscrit.
 """
 
-# --- 2. FONCTIONS TECHNIQUES (MODE CLOUD) ---
-
-import json
+# --- 2. FONCTIONS TECHNIQUES ---
 
 def connecter_gsheet():
+    """Connexion via le bloc JSON complet pour éviter les erreurs PEM/Padding"""
     try:
-        # On charge le JSON brut directement depuis les secrets
-        creds_info = json.loads(st.secrets["GCP_JSON_BRUT"], strict=False)
+        # On récupère le texte brut du JSON dans les secrets
+        json_string = st.secrets["GCP_JSON_BRUT"]
+        # Transformation en dictionnaire Python
+        creds_info = json.loads(json_string, strict=False)
         
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # Ouvre la feuille via l'ID
         return client.open_by_key(SHEET_ID).sheet1
     except Exception as e:
         st.error(f"❌ Erreur de connexion Cloud : {e}")
         return None
-        
+
 def extraire_texte(f):
     """Lecteur universel : PDF, DOCX et ODT"""
     try:
@@ -67,42 +68,41 @@ def appel_ia(prompt):
         payload = {
             "model": "mistral-large-latest", 
             "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.0
+            "temperature": 0.2
         }
-        
         r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
         r.raise_for_status() 
-        data = r.json()
-        return data["choices"][0]["message"]["content"]
-            
+        return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
         return f"❌ Erreur IA : {str(e)}"
 
-# --- 3. INTERFACE UTILISATEUR STREAMLIT ---
+# --- 3. INTERFACE STREAMLIT ---
 
-st.set_page_config(page_title="L'Archiviste V7.1", layout="wide")
+st.set_page_config(page_title="L'Archiviste V8.0", layout="wide")
 st.title("🛡️ L'Archiviste : Mémoire de la Saga")
 
-# Barre latérale
-st.sidebar.header("📁 Sources & Historique")
+# Sidebar
+st.sidebar.header("📁 Configuration")
 fichiers = st.sidebar.file_uploader("Charger manuscrits", type=["pdf", "odt", "docx"], accept_multiple_files=True)
-nom_perso = st.sidebar.selectbox("Personnage à traiter", ["Zack", "Léo", "Jonas", "Autyssé"])
 
-if st.sidebar.button(f"📥 Charger Historique Cloud ({nom_perso})"):
+options_cible = ["Zack", "Léo", "Jonas", "Autyssé", "SAGA (Vue d'ensemble)"]
+nom_perso = st.sidebar.selectbox("Cible de l'analyse", options_cible)
+
+if st.sidebar.button(f"📥 Charger Historique ({nom_perso})"):
     sheet = connecter_gsheet()
     if sheet:
-        with st.spinner("Récupération de la dernière Bible..."):
+        with st.spinner("Récupération du Cloud..."):
             records = sheet.get_all_records()
             histo = next((r['Bible_Contenu'] for r in reversed(records) if r['Personnage'] == nom_perso), "Nouveau profil.")
             st.session_state.historique = histo
-            st.sidebar.success("Dernière version chargée !")
+            st.sidebar.success("Historique chargé !")
 
-# Zone principale
+# Traitement Principal
 if fichiers:
-    st.info(f"✅ {len(fichiers)} fichiers prêts pour l'analyse de {nom_perso}.")
-    
-    if st.button(f"🚀 Analyser & Mettre à jour {nom_perso}"):
-        with st.spinner("L'archiviste traite vos chapitres..."):
+    if st.button(f"🚀 Lancer l'analyse : {nom_perso}"):
+        with st.spinner("Analyse en cours..."):
+            
+            # Gestion des passages selon la cible
             alias_map = {
                 "Zack": ["Zack", "Gaz", "Loulou"],
                 "Léo": ["Léo", "Moineau", "Leo"],
@@ -110,26 +110,52 @@ if fichiers:
                 "Autyssé": ["Autyssé", "Auty", "Autysse"]
             }
             
-            passages = []
+            tous_extraits = []
             for f in fichiers:
-                texte_brut = extraire_texte(f).replace("’", "'")
-                lignes = texte_brut.split('\n')
-                for ligne in lignes:
-                    if any(re.search(r'\b' + re.escape(alias) + r'\b', ligne, re.IGNORECASE) for alias in alias_map[nom_perso]):
-                        if len(ligne.strip()) > 50:
-                            passages.append(ligne.strip())
+                tous_extraits.append(extraire_texte(f).replace("’", "'"))
+            
+            texte_complet = "\n".join(tous_extraits)
+            
+            if nom_perso == "SAGA (Vue d'ensemble)":
+                passages_cibles = texte_complet[:5000] # On prend les 5000 premiers caractères pour la vue globale
+                mission = """
+                MISSION : ANALYSE TRANSVERSALE DE LA SAGA.
+                1. Thématiques : Reconstruction, Consentement, Froid.
+                2. Monde : Règles de la Tribu, lieux marquants.
+                3. Équilibre : Comment les 4 protagonistes interagissent-ils ici ?
+                """
+            else:
+                lignes = texte_complet.split('\n')
+                passages_cibles = [l.strip() for l in lignes if any(a.lower() in l.lower() for a in alias_map[nom_perso]) and len(l) > 40]
+                passages_cibles = "\n".join(passages_cibles[:30])
+                mission = f"""
+                MISSION : PORTRAIT PSYCHOLOGIQUE DE {nom_perso}.
+                1. État Somatique : Réactions du corps, sensorialité.
+                2. Souveraineté : Limites, refus, reprises de contrôle.
+                3. Évolution interne dans ces chapitres.
+                """
 
             historique_existant = st.session_state.get('historique', "Pas d'historique connu.")
-            contexte_manuscrit = "\n\n".join(passages[:25])
             
-            prompt_final = f"{VERROU_SAGA}\n\nHISTO: {historique_existant}\n\nEXTRAITS: {contexte_manuscrit}\n\nMISSION: Mise à jour Bible."
+            prompt_final = f"""
+            {VERROU_SAGA}
+            ---
+            HISTORIQUE PRÉCÉDENT :
+            {historique_existant}
+            ---
+            EXTRAITS DU MANUSCRIT :
+            {passages_cibles}
+            ---
+            {mission}
+            """
             
             resultat = appel_ia(prompt_final)
             st.session_state.derniere_bible = resultat
 
+# Affichage et Sauvegarde
 if "derniere_bible" in st.session_state:
     st.divider()
-    st.subheader(f"📖 Bible mise à jour : {nom_perso}")
+    st.subheader(f"📖 Résultat pour : {nom_perso}")
     st.markdown(st.session_state.derniere_bible)
     
     if st.button("💾 Sauvegarder sur Google Sheets"):
