@@ -25,26 +25,26 @@ INTERDICTION : Ne jamais inventer de famille ou de lieux non cités dans le manu
 """
 
 # --- 2. FONCTIONS TECHNIQUES (MODE CLOUD) ---
-def connecter_gsheet():
-    try:
-        # On extrait les secrets dans un dictionnaire standard
-        creds_dict = {k: v for k, v in st.secrets["gcp_service_account"].items()}
-        
-        if "private_key" in creds_dict:
-            # On nettoie TOUT : les \n écrits, les espaces et les guillemets
-            pk = creds_dict["private_key"]
-            pk = pk.replace("\\n", "\n") # Change les \n texte en vrais sauts de ligne
-            pk = pk.strip() # Enlève les espaces autour
-            creds_dict["private_key"] = pk
 
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # Utilisation directe du dictionnaire nettoyé
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        return client.open_by_key(SHEET_ID).sheet1
+import json
+
+def connecter_gsheet():
+    """Connexion via le bloc JSON complet pour éviter les erreurs PEM"""
+    try:
+        # On récupère le bloc de texte brut des secrets
+        google_json_string = st.secrets["GCP_JSON_BRUT"]
         
+        # On le transforme en dictionnaire Python
+        creds_info = json.loads(google_json_string, strict=False)
+        
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # Ton ID de feuille est déjà le bon
+        return client.open_by_key(SHEET_ID).sheet1
     except Exception as e:
-        st.error(f"❌ Erreur PEM persistante : {e}")
+        st.error(f"❌ Erreur de connexion Cloud : {e}")
         return None
         
 def extraire_texte(f):
