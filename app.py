@@ -1,6 +1,5 @@
 import os
 import re
-import json
 import streamlit as st
 from docx import Document
 import pdfplumber
@@ -21,7 +20,7 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     api_key_env = os.getenv("GEMINI_API_KEY")
     if not api_key_env:
-        st.error("Clé GEMINI_API_KEY manquante. Vérifie tes Secrets Streamlit.")
+        st.error("Clé API manquante. Ajoute GEMINI_API_KEY dans les Secrets Streamlit.")
     client = genai.Client(api_key=api_key_env)
 
 # ==========================================
@@ -30,45 +29,43 @@ else:
 
 CONSTANTES_SAGA = {
     "Zack": (
-        "ÂGE: 15 ans. ORIGINE: Cité de Pierre. Victime de sa tribu. "
-        "PSYCHOLOGIE: Zackary (officiel), Zack (amis). Quête du soi. "
-        "ORIENTATION: Bisexuel. COUPLE ASEXUEL avec Jade. Relations sexuelles: Léo, Jonas, Autyssé. "
-        "AURA: Rouge et Noir. L'Ombre est une ligne noire qui le grignote."
+        "ÂGE: 15 ans. IDENTITÉ: Zackary (officiel), Zack (amis). "
+        "ORIGINE: Cité de Pierre. Victime de sa tribu. PSYCHOLOGIE: Quête du soi, protecteur. "
+        "ORIENTATION: Bisexuel. COUPLE ASEXUEL avec Jade (Souveraineté). "
+        "RELATIONS SEXUELLES: Léo, Jonas, Autyssé. AURA: Rouge et Noir. "
+        "STIGMATE: 'Gaz' est une insulte, pas un pouvoir."
     ),
     "Jonas": (
-        "ÂGE: 17 ans. ORIGINE: Grosstouff. Ancien chasseur (Grizzly). "
-        "ORIENTATION: Homosexuel (Gay). "
-        "COUPLES: Officiel avec Léo. Relations sexuelles: Léo, Zack. "
-        "LIMITE: STRICTEMENT aucun contact physique/sexuel avec Jade. AURA: Brun/Terre."
+        "ÂGE: 17 ans. ORIGINE: Grosstouff. RÔLE: Grizzly (Chasseur/Protecteur). "
+        "ORIENTATION: Homosexuel (Gay). COUPLE: Officiel avec Léo. "
+        "RELATIONS SEXUELLES: Léo, Zack. LIMITE: Aucun contact sexuel avec Jade. "
+        "AURA: Brun / Terre."
     ),
     "Léo": (
-        "ÂGE: 15 ans. ORIGINE: Cathédrale. Fils de Lumière. "
-        "ORIENTATION: Bisexuel. Guide du groupe. "
-        "COUPLES: Officiel avec Jonas. Relations sexuelles: Jonas, Zack, Jade. "
-        "POUVOIR: Voit les 'fils' (liens d'auras) par concentration."
+        "ÂGE: 15 ans. ORIGINE: Cathédrale. RÔLE: Moineau (Fils de Lumière). "
+        "ORIENTATION: Bisexuel. COUPLE: Officiel avec Jonas. "
+        "RELATIONS SEXUELLES: Jonas, Zack, Jade. POUVOIR: Voit les fils d'auras."
     ),
     "Jade": (
         "ORIGINE: Village Soleil. ORIENTATION: Bisexuelle. "
-        "COUPLES: Officiel ASEXUEL avec Zack. Relations sexuelles: Léo, Zack."
+        "COUPLE: Officiel ASEXUEL avec Zack. RELATIONS SEXUELLES: Léo, Zack."
     ),
     "Autyssé": (
-        "ORIGINE: Grosstouff. Profil autiste (TSA). Fils de la Structure. "
-        "ORIENTATION: Pansexuel. Affection amoureuse et sexuelle avec Zack. AURA: Bleu."
+        "PROFIL: Autiste (TSA). RÔLE: Fils de la Structure (Cartographe). "
+        "ORIENTATION: Pansexuel. RELATION: Affection et sexe avec Zack. AURA: Bleu."
     ),
-    "SAGA": "Focus sur l'Ombre (ligne noire), la Reconstruction et la cohérence des liens (fils)."
+    "SAGA": "THÈMES: Reconstruction, Consentement, l'Ombre (Ligne Noire)."
 }
 
 # ==========================================
-# 2. MOTEUR IA AVEC SÉCURITÉ QUOTA (429)
+# 2. MOTEUR IA AVEC BASCULE PRO/FLASH
 # ==========================================
 
-def appel_ia(prompt: str, temperature: float = 0.1, primary_model: str = "gemini-1.5-pro") -> str:
-    """
-    Tente d'utiliser le modèle Pro. Si quota épuisé (429), bascule sur Flash.
-    """
+def appel_ia(prompt: str, temperature: float = 0.1, model_name: str = "gemini-1.5-pro") -> str:
+    """Tentative en Pro, bascule sur Flash si Quota 429 épuisé."""
     try:
         response = client.models.generate_content(
-            model=primary_model,
+            model=model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=temperature,
@@ -78,23 +75,20 @@ def appel_ia(prompt: str, temperature: float = 0.1, primary_model: str = "gemini
         return response.text or ""
     except Exception as e:
         if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            st.warning("⚠️ Quota Pro saturé. Bascule automatique sur Gemini 1.5 Flash...")
+            st.warning("⚠️ Quota Pro saturé. Bascule sur Gemini 1.5 Flash...")
             try:
                 response = client.models.generate_content(
                     model="gemini-1.5-flash",
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=temperature,
-                        max_output_tokens=4096,
-                    ),
+                    config=types.GenerateContentConfig(temperature=temperature, max_output_tokens=4096),
                 )
                 return response.text or ""
             except Exception as e2:
-                return f"❌ Erreur critique (même en Flash) : {str(e2)}"
+                return f"❌ Erreur critique : {str(e2)}"
         return f"❌ Erreur Gemini : {str(e)}"
 
 # ==========================================
-# 3. GESTION DES FICHIERS
+# 3. LECTURE MULTI-FORMATS
 # ==========================================
 
 def extraire_texte(f) -> str:
@@ -110,7 +104,7 @@ def extraire_texte(f) -> str:
             return "\n".join([extractText(p) for p in odt_doc.getElementsByType(P)])
         return ""
     except Exception:
-        return ""
+        return f"Erreur de lecture sur {f.name}"
 
 def decouper_chapitres(texte: str):
     pattern = r'(?i)chapitre\s+\d+'
@@ -118,35 +112,47 @@ def decouper_chapitres(texte: str):
     titres = re.findall(pattern, texte)
     chapitres = []
     if len(segments) > 0 and len(segments[0].strip()) > 100:
-        chapitres.append({"titre": "Prologue", "contenu": segments[0].strip()})
+        chapitres.append({"titre": "Prologue / Intro", "contenu": segments[0].strip()})
     for i, t in enumerate(titres):
         if i + 1 < len(segments):
             chapitres.append({"titre": t, "contenu": segments[i + 1].strip()})
     return chapitres
 
 # ==========================================
-# 4. INTERFACE STREAMLIT
+# 4. INTERFACE UTILISATEUR
 # ==========================================
 
-st.set_page_config(page_title="Grizzly & Moineau V4.2.2 (Pro)", layout="wide")
-st.title("🛡️ L'Archiviste V4.2.2 (Mode Pro & Fallback)")
+st.set_page_config(page_title="Grizzly & Moineau V4.2.3", layout="wide")
+st.title("🛡️ L'Archiviste V4.2.3 (Édition Intégrale)")
 
 if "db" not in st.session_state:
     st.session_state.db = {"chapitres": [], "ready": False}
 
-f_input = st.file_uploader("Charger le Manuscrit (.pdf, .docx, .odt)", type=["pdf", "docx", "odt"])
+# Sidebar : Chargement Multi-fichiers
+st.sidebar.header("📁 Bibliothèque de la Saga")
+f_inputs = st.sidebar.file_uploader(
+    "Charger les Tomes (PDF, DOCX, ODT)", 
+    type=["pdf", "docx", "odt"], 
+    accept_multiple_files=True
+)
 
-if f_input and not st.session_state.db["ready"]:
-    if st.button("🚀 Scanner le Manuscrit"):
-        txt = extraire_texte(f_input).replace("’", "'").replace("œ", "oe")
-        st.session_state.db["chapitres"] = decouper_chapitres(txt)
+if f_inputs and not st.session_state.db["ready"]:
+    if st.button("🚀 Scanner l'Intégrale"):
+        texte_total = ""
+        for f in f_inputs:
+            with st.spinner(f"Lecture de {f.name}..."):
+                texte_total += extraire_texte(f) + "\n\n"
+        
+        txt_clean = texte_total.replace("’", "'").replace("œ", "oe")
+        st.session_state.db["chapitres"] = decouper_chapitres(txt_clean)
         st.session_state.db["ready"] = True
+        st.success(f"Scan terminé : {len(st.session_state.db['chapitres'])} chapitres détectés.")
         st.rerun()
 
+# Main Area : Analyse
 if st.session_state.db["ready"]:
-    st.sidebar.header("📜 Bibliothèque")
     nom_perso = st.sidebar.selectbox("Personnage cible", options=list(CONSTANTES_SAGA.keys()))
-
+    
     indices = [i for i, c in enumerate(st.session_state.db["chapitres"]) if nom_perso.lower() in c['contenu'].lower()]
     selection = st.multiselect(f"Chapitres pour {nom_perso}", options=indices, format_func=lambda x: st.session_state.db["chapitres"][x]['titre'])
 
@@ -156,30 +162,27 @@ if st.session_state.db["ready"]:
         with col_a:
             if st.button("🧠 Étape 1 : Analyse Stratford"):
                 texte_focus = "\n".join([st.session_state.db["chapitres"][i]['contenu'][:10000] for i in selection])
-                prompt_s = f"[ANALYSEUR STRATFORD V4.2] Analyse {nom_perso} : 1.Réactions viscérales 2.Non-dits 3.Souveraineté.\nEXTRAIT :\n{texte_focus}"
-                with st.spinner("Analyse Stratford en cours (Pro)..."):
+                prompt_s = f"[STRATFORD V4.2] Analyse {nom_perso} :\n1.Corps/Somatique\n2.Trauma/Non-dits\n3.Souveraineté.\nEXTRAITS:\n{texte_focus}"
+                with st.spinner("Analyse Pro en cours..."):
                     rapport = appel_ia(prompt_s, temperature=0.4)
                     st.session_state[f"strat_{nom_perso}"] = rapport
-                    st.success("Analyse terminée.")
-                    st.text_area("Rapport", rapport, height=300)
+                    st.text_area("Rapport Stratford", rapport, height=400)
 
         with col_b:
             if st.button("📖 Étape 2 : Générer Bible"):
                 if f"strat_{nom_perso}" not in st.session_state:
-                    st.error("Lance d'abord l'analyse Stratford !")
+                    st.error("Lance d'abord Stratford !")
                 else:
                     texte_synthese = "\n".join([st.session_state.db["chapitres"][i]['contenu'][:10000] for i in selection])
-                    regles = CONSTANTES_SAGA.get(nom_perso, "")
                     prompt_b = f"""[BIBLE SAGA] PERSO: {nom_perso}
-CANON: {regles}
+CANON: {CONSTANTES_SAGA[nom_perso]}
 TEXTURE: {st.session_state[f"strat_{nom_perso}"]}
-CONSIGNE: Rédige la fiche officielle. Signale les ÉCARTS PAR RAPPORT AU CANON si nécessaire.
+MISSION: Rédige la fiche officielle. Signale tout ÉCART AU CANON (ex: mauvaise relation ou âge).
 EXTRAITS: {texte_synthese}"""
-                    with st.spinner("Génération de la Bible (Pro)..."):
+                    with st.spinner("Génération de la Bible..."):
                         bible = appel_ia(prompt_b, temperature=0.0)
                         st.markdown(bible)
-                        # Export simple (logiciel tiers peut être requis pour .docx complexe)
-                        st.download_button("💾 Télécharger Bible", bible, file_name=f"Bible_{nom_perso}.txt")
+                        st.download_button("💾 Sauvegarder", bible, file_name=f"Bible_{nom_perso}.txt")
 
 if st.sidebar.button("🗑️ Nouveau Scan"):
     st.session_state.db = {"chapitres": [], "ready": False}
