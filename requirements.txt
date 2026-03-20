@@ -1,8 +1,8 @@
 streamlit
+google-generativeai
 gspread
 google-auth
 pdfplumber
 python-docx
 odfpy
 requests
-python-dotenv
