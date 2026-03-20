@@ -1,6 +1,5 @@
 streamlit
-gspread
-google-genai
+google-generativeai
+python-docx
 pdfplumber
 odfpy
-python-docx
