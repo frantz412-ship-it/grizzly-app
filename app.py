@@ -57,8 +57,8 @@ def decouper_chapitres(texte):
 # --- 4. CONNEXION IA (Modèle Stable 1.5 Flash) ---
 model = None
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash') 
+     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+model = genai.GenerativeModel(model_name="gemini-1.5-flash-001"        
 except Exception as e:
     st.error(f"⚠️ Erreur config Gemini : {e}")
 
