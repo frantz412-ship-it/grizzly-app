@@ -11,32 +11,20 @@ from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
 
-# --- 1. CONFIGURATION ET COMMANDEMENTS DE LA SAGA ---
+# --- 1. LE CODE SOURCE DE LA VÉRITÉ (VERROUS) ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
 VERROU_SAGA = """
-COMMANDEMENTS DE FIDÉLITÉ (V14) :
-
-1. L'IDENTITÉ DE ZACK :
-   - Nom officiel : Zackary. 
-   - Préférence : Il préfère se faire appeler ZACK par ses amis (Jonas, Léo, Jade, Autyssé).
-   - Stigmate : "Gaz" est une insulte de la Tribu. Zack ne l'utilise jamais pour lui-même.
-
-2. LES VISIONS DE LÉO (15 ans) :
-   - L'OMBRE : Elle apparaît sous la forme d'une LIGNE NOIRE dans les fils de vision de Léo. C'est la menace, la corruption ou le vide.
-   - LES FILS (Liens) : Jonas (Brun/Terre), Zack (Rouge/Noir), Autyssé (Bleu/Froid).
-   - [FEW-SHOT EXEMPLE] :
-     ❌ INCORRECT : "Léo voit une ligne noire dans son aura, c'est son passé."
-     ✅ CORRECT : "Léo perçoit l'Ombre comme une ligne noire qui tente de grignoter les fils du groupe."
-
-3. CARTOGRAPHIE DES RELATIONS :
-   - JONAS / ZACK : Relation protecteur/protégé. Zack admire Jonas mais craint l'intrusion physique.
-   - LÉO / ZACK : Relation guide/suiveur. Zack suit la lumière de Léo mais craint de rompre le fil.
-   - AUTYSSÉ / ZACK : Opposition Structure vs Chaos. Autyssé analyse, Zack ressent. Tension et besoin mutuel.
-   - ZACK / JADE : Couple asexuel. Bastion de sécurité absolue et de souveraineté.
-
-4. PHYSIQUE :
-   - Jonas (17 ans), Léo (15 ans), Zack (15 ans). Respecter ces âges dans les analyses somatiques.
+PROTOCOLE DE DIAGNOSTIC (STRICT) :
+1. INTERDICTION D'INVENTION : Ne déduis jamais une apparence (yeux, habits, cheveux) ou un passé si l'extrait ne le cite pas explicitement. Écris "Non mentionné".
+2. MISSION DE DIAGNOSTIC : Ton rôle est de diagnostiquer les faits présents.
+   - Observation : Ce qui est écrit.
+   - Diagnostic : Ce que cela révèle sur l'état somatique ou la souveraineté.
+3. VÉRITÉS FIXES :
+   - AGES : Jonas (17 ans), Léo (15 ans), Zack (15 ans).
+   - IDENTITÉ : Zackary (officiel), Zack (amis). "Gaz" est une INSULTE, pas un pouvoir.
+   - VISIONS : Léo voit des "fils" [fil] d'auras. L'Ombre est une "ligne noire".
+   - AURAS : Jonas (Brun), Zack (Rouge/Noir), Autyssé (Bleu).
 """
 
 # --- 2. FONCTIONS TECHNIQUES ---
@@ -52,7 +40,7 @@ def connecter_et_obtenir_onglet(nom_onglet):
             return ss.worksheet(nom_onglet)
         except gspread.exceptions.WorksheetNotFound:
             nouvel_onglet = ss.add_worksheet(title=nom_onglet, rows="1000", cols="5")
-            nouvel_onglet.append_row(["Date", "Analyse", "Type"])
+            nouvel_onglet.append_row(["Date", "Diagnostic", "Type"])
             return nouvel_onglet
     except Exception as e:
         st.error(f"Erreur Sheets : {e}")
@@ -81,7 +69,7 @@ def appel_ia(prompt):
         payload = {
             "model": "mistral-large-latest", 
             "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.0 # Précision maximale
+            "temperature": 0.0 # Suppression de toute créativité
         }
         r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
         return r.json()["choices"][0]["message"]["content"]
@@ -90,36 +78,36 @@ def appel_ia(prompt):
 
 # --- 3. INTERFACE ---
 
-st.set_page_config(page_title="L'Archiviste V14.0", layout="wide")
-st.title("🛡️ L'Archiviste : L'Ombre et les Fils")
+st.set_page_config(page_title="L'Archiviste V15.0", layout="wide")
+st.title("🛡️ L'Archiviste : Diagnostic de la Saga")
 
 st.sidebar.header("📁 Manuscrits")
 fichiers = st.sidebar.file_uploader("Charger chapitres", type=["pdf", "docx", "odt"], accept_multiple_files=True)
 
 options_cible = ["Jonas", "Léo", "Zack", "Autyssé", "Jade", "SAGA"]
-nom_perso = st.sidebar.selectbox("Cible de l'analyse", options_cible)
+nom_perso = st.sidebar.selectbox("Cible du diagnostic", options_cible)
 
-if fichiers and st.button(f"🚀 Générer Fiche Complète : {nom_perso}"):
-    with st.spinner(f"Analyse des relations pour {nom_perso}..."):
+if fichiers and st.button(f"🚀 Établir Diagnostic : {nom_perso}"):
+    with st.spinner(f"Analyse factuelle de {nom_perso}..."):
         
         texte_brut = "\n".join([lire_manuscrit(f) for f in fichiers])
         
         if nom_perso == "SAGA":
             mission = """
-            ANALYSE DE LA SAGA :
-            1. Présence de l'Ombre (la ligne noire dans les visions).
-            2. Solidité des liens (fils) entre les membres du groupe.
-            3. Évolution de la souveraineté collective face à la Tribu.
+            DIAGNOSTIC SAGA :
+            1. État des Fils : Santé des liens d'auras.
+            2. Menace : Localisation et impact de l'Ombre (ligne noire).
+            3. Souveraineté Collective : Capacité du groupe à résister à la Tribu.
             """
             contexte = texte_brut[:8000]
         else:
             mission = f"""
-            FICHE PERSONNAGE RÉELLE : {nom_perso}.
-            1. PHYSIQUE ET SOMATIQUE : État du corps (Respecter l'âge et les raideurs).
-            2. RELATIONS : Analyse du lien spécifique avec les autres membres du groupe (Jonas, Léo, Zack, Autyssé, Jade).
-            3. VISION DES FILS : État de son fil d'aura et proximité de l'Ombre (ligne noire).
-            4. SOUVERAINETÉ : Moments de contrôle intérieur.
-            NOTE : Zack préfère 'Zack' pour ses amis. Zackary est son nom officiel.
+            DIAGNOSTIC FACTUEL : {nom_perso}.
+            1. PHYSIQUE (OBSERVATION) : Uniquement ce qui est explicitement décrit. (Si rien : "Information absente").
+            2. ÉTAT SOMATIQUE (DIAGNOSTIC) : Réaction du corps aux événements (froid, peur, contact).
+            3. RELATIONS (DIAGNOSTIC) : État du lien avec les autres (Fils de Lumière, Grizzly, Jade, Autyssé).
+            4. SOUVERAINETÉ (DIAGNOSTIC) : Moments où le personnage reprend son territoire intérieur.
+            5. FIL D'AURA : Couleur et proximité de la ligne noire (Ombre).
             """
             lignes = texte_brut.split('\n')
             contexte = "\n".join([l for l in lignes if nom_perso.lower() in l.lower()][:50])
@@ -132,12 +120,12 @@ if fichiers and st.button(f"🚀 Générer Fiche Complète : {nom_perso}"):
 
 if "resultat" in st.session_state:
     st.divider()
-    st.subheader(f"📖 Fiche Certifiée : {st.session_state.cible_actuelle}")
+    st.subheader(f"📖 Diagnostic Certifié : {st.session_state.cible_actuelle}")
     st.markdown(st.session_state.resultat)
     
     if st.button(f"💾 Archiver dans l'onglet {st.session_state.cible_actuelle}"):
         onglet = connecter_et_obtenir_onglet(st.session_state.cible_actuelle)
         if onglet:
             date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            onglet.append_row([date_now, st.session_state.resultat, "V14 - Ombre & Relations"])
-            st.success(f"✅ Analyse de {st.session_state.cible_actuelle} enregistrée.")
+            onglet.append_row([date_now, st.session_state.resultat, "Diagnostic V15"])
+            st.success(f"✅ Diagnostic de {st.session_state.cible_actuelle} enregistré.")
