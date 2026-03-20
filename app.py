@@ -1,25 +1,33 @@
 import os
 import re
+import json
+import datetime
+
 import streamlit as st
-from docx import Document
 import pdfplumber
+from docx import Document
 from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
 
-# UTILISATION EXCLUSIVE DE LA LIB STABLE
-import google.generativeai as genai
+import gspread
+from google.oauth2.service_account import Credentials
+
+# Nouveau SDK Gemini
+from google import genai
+from google.genai import types
 
 # ==========================================
-# 0. CONFIGURATION
+# 0. CONFIG GEMINI (NUAGE)
 # ==========================================
 
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 else:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
-    if not os.getenv("GEMINI_API_KEY"):
-        st.error("Clé API absente (st.secrets['GEMINI_API_KEY'] ou variable d'environnement).")
+    api_key_env = os.getenv("GEMINI_API_KEY")
+    if not api_key_env:
+        st.error("GEMINI_API_KEY manquante (Secrets Streamlit ou variable d'environnement).")
+    client = genai.Client(api_key=api_key_env)
 
 # ==========================================
 # 1. CONSTANTES (CANON)
@@ -33,39 +41,57 @@ CONSTANTES_SAGA = {
 }
 
 # ==========================================
-# 2. MOTEUR IA (ANTI-404)
+# 2. GOOGLE SHEETS (optionnel)
 # ==========================================
 
-def appel_ia(prompt: str) -> str:
-    """
-    Essaie plusieurs modèles Gemini via google.generativeai.
-    Ajoute le préfixe 'models/' pour éviter les erreurs 404 "model not found".
-    """
-    # Noms de modèles supportés par google.generativeai
-    base_models = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"]
-    modeles = [f"models/{m}" for m in base_models]
+SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
-    for m_name in modeles:
+def connecter_et_obtenir_onglet(nom_onglet):
+    try:
+        if "GCP_JSON_BRUT" not in st.secrets:
+            return None
+        json_info = json.loads(st.secrets["GCP_JSON_BRUT"], strict=False)
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds = Credentials.from_service_account_info(json_info, scopes=scope)
+        client_gs = gspread.authorize(creds)
+        ss = client_gs.open_by_key(SHEET_ID)
         try:
-            model = genai.GenerativeModel(m_name)
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.1,
-                    max_output_tokens=4096,
-                )
-            )
-            return response.text or ""
-        except Exception as e:
-            # Si c'est clairement un 404 / not found, on tente le modèle suivant
-            if "404" in str(e) or "not found" in str(e).lower():
-                continue
-            return f"❌ Erreur technique : {str(e)}"
-
-    return "❌ Aucun modèle Gemini disponible (vérifie tes dépendances et ton accès API)."
+            return ss.worksheet(nom_onglet)
+        except gspread.exceptions.WorksheetNotFound:
+            nouvel_onglet = ss.add_worksheet(title=nom_onglet, rows="2000", cols="5")
+            nouvel_onglet.append_row(["Date", "Diagnostic", "Type"])
+            return nouvel_onglet
+    except Exception as e:
+        st.error(f"Erreur Sheets : {e}")
+        return None
 
 # ==========================================
-# 3. FONCTIONS FICHIERS
+# 3. IA – APPEL GEMINI
+# ==========================================
+
+def appel_ia(prompt: str, temperature: float = 0.1) -> str:
+    """
+    Appel unique à Gemini via google-genai.
+    On utilise flash par défaut (rapide, stable).
+    """
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",  # change en "gemini-2.0-pro" si ton compte y a accès
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=4096,
+            ),
+        )
+        return response.text or ""
+    except Exception as e:
+        return f"❌ Erreur Gemini : {e}"
+
+# ==========================================
+# 4. FICHIERS – EXTRACTION & CHAPITRES
 # ==========================================
 
 def extraire_texte(f) -> str:
@@ -85,10 +111,6 @@ def extraire_texte(f) -> str:
         return ""
 
 def decouper_chapitres(texte: str):
-    """
-    Coupe le texte sur 'Chapitre X' (insensible à la casse),
-    et renvoie une liste de {titre, contenu}.
-    """
     pattern = r'(?i)chapitre\s+\d+'
     segments = re.split(pattern, texte)
     titres = re.findall(pattern, texte)
@@ -103,11 +125,11 @@ def decouper_chapitres(texte: str):
     return chaps
 
 # ==========================================
-# 4. INTERFACE
+# 5. INTERFACE STREAMLIT (NUAGE)
 # ==========================================
 
-st.set_page_config(page_title="Archiviste Stable", layout="wide")
-st.title("🛡️ L'Archiviste V16.5 (Roc de Pierre)")
+st.set_page_config(page_title="Archiviste Stable (Gemini SDK)", layout="wide")
+st.title("🛡️ L'Archiviste V16.5 (Roc de Pierre, Gemini SDK)")
 
 if "db" not in st.session_state:
     st.session_state.db = {"chapitres": [], "ready": False}
@@ -115,7 +137,7 @@ if "db" not in st.session_state:
 f_inputs = st.sidebar.file_uploader(
     "Charger les fichiers",
     type=["pdf", "docx", "odt"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
 )
 
 if f_inputs and not st.session_state.db["ready"]:
@@ -123,7 +145,6 @@ if f_inputs and not st.session_state.db["ready"]:
         full_txt = ""
         for f in f_inputs:
             full_txt += extraire_texte(f) + "\n\n"
-        # normalisation de quelques caractères
         full_txt = full_txt.replace("’", "'").replace("œ", "oe")
         st.session_state.db["chapitres"] = decouper_chapitres(full_txt)
         st.session_state.db["ready"] = True
@@ -140,22 +161,43 @@ if st.session_state.db["ready"]:
     sel = st.multiselect(
         "Chapitres",
         options=indices,
-        format_func=lambda x: st.session_state.db["chapitres"][x]['titre']
+        format_func=lambda x: st.session_state.db["chapitres"][x]['titre'],
     )
 
     if sel and st.button("🧠 Analyser"):
-        # on garde 10 000 caractères max par chapitre pour donner du contexte
         txt_focus = "\n".join(
             [st.session_state.db["chapitres"][i]['contenu'][:10000] for i in sel]
         )
-        prompt = (
-            f"Analyse le personnage {perso} dans ces extraits.\n"
-            f"Canon (à respecter strictement) : {CONSTANTES_SAGA[perso]}\n\n"
-            f"TEXTE :\n{txt_focus}"
-        )
+        canon = CONSTANTES_SAGA[perso]
+        prompt = f"""
+[DIAGNOSTIC ARCHIVISTE STABLE]
+
+PERSONNAGE : {perso}
+CANON (à respecter strictement) : {canon}
+
+CONSigne :
+- Analyse le personnage dans ces extraits (somatique, réactions, souveraineté).
+- Ne contredit jamais le canon.
+- Si une information n'est pas présente, écris "Non mentionné dans le manuscrit.".
+
+EXTRAITS :
+{txt_focus}
+"""
         with st.spinner("L'IA consulte les archives..."):
-            resultat = appel_ia(prompt)
+            resultat = appel_ia(prompt, temperature=0.1)
             st.markdown(resultat)
+            st.session_state["dernier_resultat"] = resultat
+            st.session_state["dernier_perso"] = perso
+
+    # Archivage optionnel dans Sheets
+    if "dernier_resultat" in st.session_state and st.button("💾 Archiver dans Sheets"):
+        onglet = connecter_et_obtenir_onglet(st.session_state.get("dernier_perso", "SAGA"))
+        if onglet:
+            date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            onglet.append_row(
+                [date_now, st.session_state["dernier_resultat"], "ARCHIVISTE STABLE V16.5"]
+            )
+            st.success("✅ Diagnostic archivé dans Google Sheets.")
 
 if st.sidebar.button("🗑️ Reset"):
     st.session_state.db = {"chapitres": [], "ready": False}
