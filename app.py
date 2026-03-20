@@ -11,35 +11,20 @@ from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
 
-# --- 1. CONFIGURATION ET COMMANDEMENTS DE FER ---
+# --- 1. LE CODE SOURCE DE LA VÉRITÉ (VERROUS) ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
 VERROU_SAGA = """
-COMMANDEMENTS ABSOLUS DE LA SAGA (À RESPECTER STRICTEMENT) :
+COMMANDEMENTS DE FIDÉLITÉ ABSOLUE :
 
-1. LA MÉCANIQUE DES FILS DE LÉO :
-   - LÉO est le "Fils [fis] de Lumière" (Identité).
-   - LÉO voit et ressent des "fils [fil]" (Liens/Auras). 
-   - Chaque personnage est un FIL de couleur spécifique dans la vision de Léo :
-     * JONAS : Fil de terre/brun (Grizzly).
-     * ZACK : Fil rouge/noir (Éclair/Aura flamboyante).
-     * AUTYSSÉ : Fil bleu/froid (Structure/Colonnes).
-   - CES FILS sont le lien naturel et rapide qui unit le groupe. Léo les perçoit par CONCENTRATION.
-   - [FEW-SHOT EXEMPLE] :
-     ❌ INCORRECT : "Léo perd son lien de parenté (fils) avec Jonas."
-     ✅ CORRECT : "Léo se concentre pour ressentir le fil brun de Jonas."
-
-2. DISTINCTION VICTIME / AGRESSEUR (ZACK) :
-   - Le refrain "Gaz... gaz... gaz..." est une INSULTE de la TRIBU. Zack le SUBIT.
-   - [FEW-SHOT EXEMPLE] :
-     ❌ INCORRECT : "Zack s'amuse à répéter son surnom Gaz."
-     ✅ CORRECT : "Zack se fige, blessé par le refrain 'Gaz...' de ses agresseurs."
-
-3. PORTRAITS PHYSIQUES (MIS À JOUR) :
-   - JONAS : 17 ans, brun, pantalons trop larges, regard fatigué. Fils de la Survie.
-   - LÉO : 15 ans (Correction), cheveux presque blancs, regard Fils de Lumière. Guide.
-   - ZACK : 15 ans, petit, éclair noir, posture fœtale, pierre-louveteau. Enfant de trop.
-   - AUTYSSÉ : Physique rigide, démarche cadencée, regard analytique. Fils de la Structure.
+1. RÈGLE D'OR : Ne jamais inventer. Si une information (couleur, émotion, passé) n'est pas explicitement dans l'extrait ou dans ce verrou, écris "Non mentionné".
+2. VISION DE LÉO (15 ans) : 
+   - Il est le "Fils [fis] de Lumière". Il utilise sa concentration pour voir les "fils [fil]" (liens d'auras).
+   - JONAS (17 ans) : Fil brun/terre. 
+   - ZACK (15 ans) : Fil rouge/noir (Aura flamboyante).
+   - AUTYSSÉ : Fil bleu/froid.
+3. CONTEXTE ET ENVIRONNEMENT : Analyse toujours comment le lieu (froid, rivière, forêt, Tribu) dicte la posture du personnage.
+4. LE STIGMATE DE ZACK : Le mot "Gaz" est une insulte de la Tribu. Zack ne possède pas de "pouvoir de gaz", il subit une réification. Son rire est une défense somatique.
 """
 
 # --- 2. FONCTIONS TECHNIQUES ---
@@ -58,7 +43,7 @@ def connecter_et_obtenir_onglet(nom_onglet):
             nouvel_onglet.append_row(["Date", "Analyse", "Type"])
             return nouvel_onglet
     except Exception as e:
-        st.error(f"❌ Erreur Sheets : {e}")
+        st.error(f"Erreur Sheets : {e}")
         return None
 
 def lire_manuscrit(f):
@@ -84,7 +69,7 @@ def appel_ia(prompt):
         payload = {
             "model": "mistral-large-latest", 
             "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.1 
+            "temperature": 0.0 # Zéro fantaisie, précision chirurgicale
         }
         r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
         return r.json()["choices"][0]["message"]["content"]
@@ -93,44 +78,55 @@ def appel_ia(prompt):
 
 # --- 3. INTERFACE ---
 
-st.set_page_config(page_title="L'Archiviste V12.0", layout="wide")
-st.title("🛡️ L'Archiviste : Gardien des Fils (Age Sync)")
+st.set_page_config(page_title="L'Archiviste V13.0", layout="wide")
+st.title("🛡️ L'Archiviste : Fidélité au Récit")
 
-# Sidebar
-st.sidebar.header("📁 Documents")
+st.sidebar.header("📁 Manuscrits")
 fichiers = st.sidebar.file_uploader("Charger chapitres", type=["pdf", "docx", "odt"], accept_multiple_files=True)
 
-options_cible = ["Jonas", "Léo", "Zack", "Autyssé", "SAGA"]
-nom_perso = st.sidebar.selectbox("Cible de l'analyse", options_cible)
+options_cible = ["Jonas", "Léo", "Zack", "Autyssé", "Jade", "SAGA"]
+nom_perso = st.sidebar.selectbox("Cible de l'étude", options_cible)
 
-if fichiers and st.button(f"🚀 Analyser : {nom_perso}"):
-    with st.spinner(f"L'Archiviste synchronise les fils de {nom_perso}..."):
+if fichiers and st.button(f"🚀 Générer Fiche Réelle : {nom_perso}"):
+    with st.spinner(f"Analyse contextuelle de {nom_perso}..."):
         
         texte_brut = "\n".join([lire_manuscrit(f) for f in fichiers])
         
         if nom_perso == "SAGA":
-            mission = "ANALYSE TRANSVERSALE : Cohérence des auras et des liens (fils). Respecter l'âge de 15 ans pour Léo et Zack."
-            contexte = texte_brut[:7000]
+            mission = """
+            ANALYSE DE COHÉRENCE SAGA.
+            1. État du monde : Climat, menace, ressources.
+            2. Dynamique des fils : État des liens d'auras entre les personnages.
+            3. Thèmes : Reconstruction et Consentement.
+            INTERDICTION : Ne pas inventer d'événements non décrits.
+            """
+            contexte = texte_brut[:8000]
         else:
-            mission = f"PORTRAIT PSYCHOLOGIQUE ET PHYSIQUE DE {nom_perso}. Analyse somatique (15 ans pour Léo/Zack, 17 pour Jonas)."
+            mission = f"""
+            FICHE RÉELLE DE PERSONNAGE : {nom_perso}.
+            1. APPARENCE PHYSIQUE : Uniquement ce qui est décrit (vêtements, traits, âge).
+            2. ÉTAT SOMATIQUE : Réaction du corps à l'environnement (froid, peur, présence des autres).
+            3. SOUVERAINETÉ : Analyse des moments où le personnage reprend son territoire intérieur.
+            4. FIL D'AURA : Couleur et état perçu par Léo.
+            IMPORTANT : Si un détail n'est pas présent, indique 'Information absente du texte'.
+            """
             lignes = texte_brut.split('\n')
-            contexte = "\n".join([l for l in lignes if nom_perso.lower() in l.lower()][:40])
+            contexte = "\n".join([l for l in lignes if nom_perso.lower() in l.lower()][:50])
 
-        prompt = f"{VERROU_SAGA}\n\nMISSION : {mission}\n\nEXTRAITS : {contexte}"
+        prompt = f"{VERROU_SAGA}\n\nMISSION : {mission}\n\nEXTRAITS DU MANUSCRIT : {contexte}"
         
         resultat = appel_ia(prompt)
         st.session_state.resultat = resultat
         st.session_state.cible_actuelle = nom_perso
 
-# Affichage et Sauvegarde
 if "resultat" in st.session_state:
     st.divider()
-    st.subheader(f"📖 Fiche synchronisée : {st.session_state.cible_actuelle}")
+    st.subheader(f"📖 Fiche Officielle : {st.session_state.cible_actuelle}")
     st.markdown(st.session_state.resultat)
     
-    if st.button(f"💾 Sauvegarder dans l'onglet {st.session_state.cible_actuelle}"):
+    if st.button(f"💾 Archiver dans l'onglet {st.session_state.cible_actuelle}"):
         onglet = connecter_et_obtenir_onglet(st.session_state.cible_actuelle)
         if onglet:
             date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            onglet.append_row([date_now, st.session_state.resultat, "V12 Age Sync"])
-            st.success(f"✅ Dossier {st.session_state.cible_actuelle} mis à jour avec succès !")
+            onglet.append_row([date_now, st.session_state.resultat, "Fiche Réelle V13"])
+            st.success(f"✅ La fiche de {st.session_state.cible_actuelle} a été certifiée et enregistrée.")
