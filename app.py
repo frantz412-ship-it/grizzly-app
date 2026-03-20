@@ -1,212 +1,167 @@
-import os
-import re
-import json
-import datetime
-
 import streamlit as st
-import pdfplumber
+import pandas as pd
+import re
+import os
+import google.generativeai as genai
+from datetime import datetime, timezone
+from PyPDF2 import PdfReader
 from docx import Document
-from odf.opendocument import load
-from odf.text import P
-from odf.teletype import extractText
+from streamlit_gsheets import GSheetsConnection
 
-import gspread
-from google.oauth2.service_account import Credentials
+# --- 1. CONFIGURATION & CANON DÉFINITIF ---
+st.set_page_config(page_title="Grizzly & Moineau - Lab", page_icon="📚", layout="wide")
 
-# SDK Gemini 2.0/3
-from google import genai
-from google.genai import types
-
-# ==========================================
-# 0. CONFIG GEMINI (NUAGE)
-# ==========================================
-
-if "GEMINI_API_KEY" in st.secrets:
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    api_key_env = os.getenv("GEMINI_API_KEY")
-    if not api_key_env:
-        st.error("GEMINI_API_KEY manquante dans les Secrets Streamlit.")
-    client = genai.Client(api_key=api_key_env)
-
-# ==========================================
-# 1. CONSTANTES (CANON INTÉGRAL)
-# ==========================================
-
-CONSTANTES_SAGA = {
-    "Jonas": """ÂGE: ~17 ans. Surnom: Grizzly. Orientation: Gay. Couple exclusif avec Léo (Moineau).
-Aura: VERTE (phosphorescent, braise froide). Manifestation: 'Colère' (créature verte, yeux charbon).
-Capacités: chasseur expert, tir méthodique. Traits: cicatrice gorge, épaules étroites.
-Talisman: petite boîte de métal. Thèmes: culpabilité, protection.""",
-
-    "Léo": """ÂGE: ~15-17 ans. Surnom: Moineau. Orientation: Bisexuel. Couple exclusif avec Jonas (Grizzly).
-Aura: BLEUE (liens de lumière). Manifestation: La Louve de lumière blanche (gardienne).
-Capacités: voit les fils, peut 'arrêter le temps' en crise. Traits: cheveux blonds, cicatrice lèvre.
-Talisman: la Louve de lumière. Thèmes: vision, lien du groupe.""",
-
-    "Zack": """ÂGE: 15 ans (T2). Nom: Zackary (Albert d'origine). Surnom: Gaz (ancien).
-Orientation: découverte active. Aura: ROUGE CHAUD (braise - JAMAIS noir).
-Capacités: membranes/ailes, vol, électrostatique (gaz + étincelle = combustion).
-Traits: yeux reflets noisette-rouille, corps mince, cicatrices d'ailes.
-Talismans: louveteau de pierre + sac fleur brodée + breloque. Thèmes: consentement, identité.""",
-
-    "Jade": """Rôle: cheffe/matriarche. Orientation: lien avec Zack (rythme lent).
-Aura: JAUNE/DORÉE. Arme: fronde. Traits: posture droite, tactique.
-Thèmes: ne pas s'effacer, souveraineté du non et du oui.""",
-
-    "Autyss": """Rôle: stratège, 'chirurgien'. Aura: VIOLETTE.
-Capacités: analyse tactique, dissociation contrôlée, soins. Besoins: constantes sensorielles.
-Talisman: sac de Zack (prêté). Traits: s'exprime en poèmes.
-Thèmes: colonnes vs chaos, ressentir sans disséquer.""",
-
-    "SAGA": """Thèmes: Reconstruction post-trauma ('corps passager, jamais outil').
-L'Ombre, la Cathédrale, la Voix.
-Règles du groupe (T3): base Jonas–Léo intouchable; si flou = non; jalousie nommée; pas de sexe en secret.
-Lieux: Badlands, Village Soleil, Forge.""",
+CANON_DATA = {
+    "Jonas": "ÂGE: 17 ans. Noms: Jonas. Surnoms: Grizzly, Grizz. Couple exclusif Léo. Aura: VERTE phosphorescente (Colère). Yeux verts, cheveux bruns, cicatrice gorge.",
+    "Léo": "ÂGE: 15-17 ans. Noms: Léo. Surnoms: Moineau. Couple exclusif Jonas. Aura: BLEUE. Louve blanche de lumière (gardienne), voit les fils.",
+    "Zack": "ÂGE: 15 ans. Noms: Gaz (ancien), Albert (légal), Zackary/Zack (choisi). Surnoms: Gaz. Aura: ROUGE CHAUD. Ailes aux flancs, vol. Talismans: Louveteau pierre, sac fleur. NOTE: Appelle Luc 'Gremlin'.",
+    "Jade": "Noms: Jade. Surnoms: Cheffe ou Matriarche de terrain. Aura: JAUNE/DORÉE. Arme: Fronde. Souveraineté, non-sacrificielle.",
+    "Autyss": "Noms: Autyss. Surnoms: Chirurgien des colonnes, Compteur de poèmes. Aura: VIOLETTE. Capacité: Colonnes/Diagrammes. Poésie pour le crucial.",
+    "Luc": "Noms: Luc. Surnoms: Gremlin (donné par Zack). Rôle: Personnage secondaire.",
+    "SAGA": "Couple Jonas-Léo intouchable. Si flou = non. Corps passager, jamais outil. Consentement explicite. Cathédrale vs Voix."
 }
 
-# ==========================================
-# 2. GOOGLE SHEETS (ARCHIVAGE)
-# ==========================================
+# --- 2. MÉMOIRE DE L'APPLICATION (Session State) ---
+if 'chapitres' not in st.session_state: st.session_state.chapitres = []
+if 'analyses' not in st.session_state: st.session_state.analyses = []
 
-SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
+# --- 3. FONCTIONS TECHNIQUES ---
+def normaliser_texte(txt):
+    replacements = {'’': "'", '«': '"', '»': '"', 'œ': 'oe', '…': '...'}
+    for old, new in replacements.items():
+        txt = txt.replace(old, new)
+    return txt
 
-def connecter_et_obtenir_onglet(nom_onglet):
+def extraire_texte(file):
     try:
-        if "GCP_JSON_BRUT" not in st.secrets:
-            return None
-        json_info = json.loads(st.secrets["GCP_JSON_BRUT"], strict=False)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(json_info, scopes=scope)
-        client_gs = gspread.authorize(creds)
-        ss = client_gs.open_by_key(SHEET_ID)
-        try:
-            return ss.worksheet(nom_onglet)
-        except gspread.exceptions.WorksheetNotFound:
-            nouvel_onglet = ss.add_worksheet(title=nom_onglet, rows="2000", cols="5")
-            nouvel_onglet.append_row(["Date", "Diagnostic", "Type"])
-            return nouvel_onglet
+        if file.name.endswith('.pdf'):
+            return " ".join([page.extract_text() or "" for page in PdfReader(file).pages])
+        elif file.name.endswith('.docx'):
+            return " ".join([p.text for p in Document(file).paragraphs])
     except Exception as e:
-        st.error(f"Erreur Sheets : {e}")
-        return None
+        st.error(f"Erreur lecture {file.name}: {e}")
+    return ""
 
-# ==========================================
-# 3. MOTEUR IA
-# ==========================================
+def decouper_chapitres(texte):
+    # Regex (?i) : Insensible à la casse (Chapitre, CHAPITRE, chapitre...)
+    parts = re.split(r'(?i)(chapitre\s+\d+)', texte)
+    if len(parts) <= 1:
+        return [{"titre": "Manuscrit Complet", "contenu": texte}]
+    
+    chapitres = []
+    for i in range(1, len(parts), 2):
+        if i + 1 < len(parts):
+            chapitres.append({"titre": parts[i], "contenu": parts[i+1]})
+    return chapitres
 
-def appel_ia(prompt: str, temperature: float = 0.1) -> str:
-    try:
-        # Priorité au modèle 3 Flash Preview s'il est disponible dans ton SDK
-        response = client.models.generate_content(
-            model="gemini-3-flash-preview", 
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=4096,
-            ),
-        )
-        return response.text or ""
-    except Exception:
-        # Fallback sur 2.0 Flash si le 3 n'est pas encore mappé
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=temperature, max_output_tokens=4096),
-            )
-            return response.text or ""
-        except Exception as e:
-            return f"❌ Erreur Gemini : {e}"
+# --- 4. CONNEXION IA (Gemini 3 Flash) ---
+model = None
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-3-flash') 
+except Exception as e:
+    st.error(f"⚠️ Erreur config Gemini : {e}")
 
-# ==========================================
-# 4. GESTION DES FICHIERS
-# ==========================================
+# --- 5. SIDEBAR : GESTION DES FICHIERS ---
+with st.sidebar:
+    st.header("📂 Manuscrit")
+    files = st.file_uploader("Importer Tomes (PDF/DOCX)", accept_multiple_files=True)
+    
+    if st.button("🚀 Traiter les fichiers"):
+        if not files:
+            st.warning("Sélectionne au moins un fichier.")
+        else:
+            with st.spinner("Analyse du manuscrit..."):
+                all_text = ""
+                for f in files:
+                    all_text += f"\n\n[TOME: {f.name}]\n\n"
+                    all_text += extraire_texte(f)
+                st.session_state.chapitres = decouper_chapitres(normaliser_texte(all_text))
+            st.success(f"{len(st.session_state.chapitres)} sections détectées.")
 
-def extraire_texte(f) -> str:
-    try:
-        if f.name.endswith(".pdf"):
-            with pdfplumber.open(f) as pdf:
-                return "\n".join([p.extract_text() or "" for p in pdf.pages])
-        elif f.name.endswith(".docx"):
-            return "\n".join([p.text for p in Document(f).paragraphs])
-        elif f.name.endswith(".odt"):
-            return "\n".join([extractText(p) for p in load(f).getElementsByType(P)])
-        return ""
-    except Exception:
-        return ""
-
-def decouper_chapitres(texte: str):
-    # CORRECTION : Utilisation de \s (espace) et \d (chiffre)
-    pattern = r'(?i)chapitre\s+\d+'
-    segments = re.split(pattern, texte)
-    titres = re.findall(pattern, texte)
-    chaps = []
-
-    if len(segments) > 0 and len(segments[0].strip()) > 100:
-        chaps.append({"titre": "Prologue", "contenu": segments[0].strip()})
-
-    for i, t in enumerate(titres):
-        if i + 1 < len(segments):
-            chaps.append({"titre": t.strip(), "contenu": segments[i + 1].strip()})
-    return chaps
-
-# ==========================================
-# 5. INTERFACE
-# ==========================================
-
-st.set_page_config(page_title="L'Archiviste V17.4", layout="wide")
-st.title("🛡️ L'Archiviste : Gardien du Canon")
-
-if "db" not in st.session_state:
-    st.session_state.db = {"chapitres": [], "ready": False}
-
-f_inputs = st.sidebar.file_uploader("Importer les Tomes", type=["pdf", "docx", "odt"], accept_multiple_files=True)
-
-if f_inputs and not st.session_state.db["ready"]:
-    if st.button("🚀 Scanner la Saga"):
-        full_txt = ""
-        for f in f_inputs:
-            full_txt += extraire_texte(f) + "\n\n"
-        full_txt = full_txt.replace("’", "'").replace("œ", "oe")
-        st.session_state.db["chapitres"] = decouper_chapitres(full_txt)
-        st.session_state.db["ready"] = True
+    if st.button("🗑️ Reset Application"):
+        st.session_state.chapitres, st.session_state.analyses = [], []
         st.rerun()
 
-if st.session_state.db["ready"]:
-    perso = st.sidebar.selectbox("Cible", options=list(CONSTANTES_SAGA.keys()))
+# --- 6. STATION D'ANALYSE ---
+st.title("🔬 Laboratoire Grizzly & Moineau")
+
+if st.session_state.chapitres:
+    col_sel, col_outils = st.columns([1, 2])
     
-    indices = [i for i, c in enumerate(st.session_state.db["chapitres"]) if perso.lower() in c["contenu"].lower()]
-    sel = st.multiselect("Chapitres", options=indices, format_func=lambda x: st.session_state.db["chapitres"][x]["titre"])
+    with col_sel:
+        perso = st.selectbox("Personnage à scanner", list(CANON_DATA.keys()))
+        
+        # Filtrage intelligent (cherche prénoms et surnoms)
+        filtre = [c for c in st.session_state.chapitres if perso.lower() in c['contenu'].lower() or perso == "SAGA"]
+        st.caption(f"{len(filtre)} chapitres correspondent.")
+        selection = st.multiselect("Chapitres à envoyer à l'IA", filtre, format_func=lambda x: x['titre'])
 
-    if sel and st.button("🧠 Analyser"):
-        txt_focus = "\n".join([st.session_state.db["chapitres"][i]["contenu"][:8000] for i in sel])
-        prompt = f"""
-[ANALYSE ARCHIVISTE V17.4]
-PERSONNAGE : {perso}
-CANON : {CONSTANTES_SAGA[perso]}
+    with col_outils:
+        st.subheader("Boutons d'analyse")
+        btns = st.columns(4)
+        config_outils = {
+            "🧠 Psyché": "Trauma, évolution psychologique et émotions.",
+            "⚔️ Physique": "Traits physiques, Aura et manifestations de pouvoir.",
+            "🕸️ Liens": "Fils bleus, relations de groupe et complicité.",
+            "🕵️ Incohérences": "Contradictions avec le Canon fixé."
+        }
 
-MISSION :
-- Analyse le personnage sur ces extraits.
-- Rapporte toute INCOHÉRENCE DÉTECTÉE (ex: aura noire pour Zack, objet manquant).
-- Structure : Physique/Aura, Psyché/Trauma, Liens, Évolution.
+        for i, (label, focus) in enumerate(config_outils.items()):
+            if btns[i].button(label):
+                if not model: st.error("IA non connectée.")
+                elif not selection: st.error("Choisis au moins un chapitre !")
+                else:
+                    # Extraction du contenu (limite à 10k caractères par chapitre pour le quota)
+                    contexte = "\n\n".join([f"### {c['titre']}\n{c['contenu'][:10000]}" for c in selection])
+                    prompt = f"""
+                    RÔLE : Expert narratif de la Saga 'Grizzly et Moineau'.
+                    RÉFÉRENCE CANON POUR {perso} : {CANON_DATA[perso]}
+                    
+                    MANUSCRIT À ANALYSER :
+                    {contexte}
+                    
+                    CONSIGNES :
+                    1. Focus analyse : {focus}
+                    2. Si info absente -> "Non mentionné dans le manuscrit."
+                    3. Si contradiction -> "INCOHÉRENCE DÉTECTÉE" + citation courte.
+                    4. RESPECTER LE CANON COMME UNE LOI ABSOLUE.
+                    5. Format Markdown.
+                    """
+                    try:
+                        with st.spinner(f"Analyse de {perso} en cours..."):
+                            resp = model.generate_content(prompt, generation_config={"temperature": 0.2})
+                            txt_ia = getattr(resp, "text", "_Réponse vide._")
+                            st.session_state.analyses.insert(0, {
+                                "id": datetime.now(timezone.utc).timestamp(),
+                                "date": datetime.now().strftime("%H:%M"),
+                                "perso": perso, "type": label, "texte": txt_ia
+                            })
+                    except Exception as e:
+                        st.error(f"Erreur Gemini : {e}")
 
-TEXTE : {txt_focus}
-"""
-        with st.spinner("L'IA consulte les archives..."):
-            resultat = appel_ia(prompt)
-            st.markdown(resultat)
-            st.session_state["dernier_resultat"] = resultat
-            st.session_state["dernier_perso"] = perso
-
-    if "dernier_resultat" in st.session_state and st.button("💾 Archiver dans Sheets"):
-        onglet = connecter_et_obtenir_onglet(st.session_state.get("dernier_perso", "SAGA"))
-        if onglet:
-            date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            onglet.append_row([date_now, st.session_state["dernier_resultat"], "V17.4"])
-            st.success("✅ Diagnostic archivé.")
-
-if st.sidebar.button("🗑️ Reset"):
-    st.session_state.db = {"chapitres": [], "ready": False}
-    st.rerun()
+# --- 7. HISTORIQUE PERSISTANT & GSHEETS ---
+st.divider()
+for ana in st.session_state.analyses:
+    unique_key = f"{ana['id']}-{ana['perso']}"
     
-    
+    with st.expander(f"📌 {ana['type']} - {ana['perso']} ({ana['date']})", expanded=True):
+        st.markdown(ana['texte'])
+        
+        if st.button(f"💾 Archiver dans GSheet", key=f"btn-{unique_key}"):
+            try:
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                # On lit l'existant pour ajouter à la suite (Append)
+                try:
+                    existing = conn.read(worksheet=ana['perso'])
+                except:
+                    existing = pd.DataFrame() # Onglet vide/nouveau
+                
+                new_row = pd.DataFrame([ana])
+                final_df = pd.concat([existing, new_row], ignore_index=True)
+                
+                conn.update(worksheet=ana['perso'], data=final_df)
+                st.success(f"Archivé dans l'onglet '{ana['perso']}' !")
+            except Exception as e:
+                st.error(f"Vérifie si l'onglet '{ana['perso']}' existe dans ton Sheet ! Erreur : {e}")
+                        
