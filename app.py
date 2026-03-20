@@ -1,33 +1,36 @@
 import os
 import json
-import requests
 import gspread
 import streamlit as st
 import pdfplumber
 import datetime
+import google.generativeai as genai
 from google.oauth2.service_account import Credentials
 from docx import Document
 from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
 
-# --- 1. LE CODE SOURCE DE LA VÉRITÉ (VERROUS) ---
+# --- 1. CONFIGURATION PRO ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("Clé API manquante.")
+
+# Les Commandements restent le socle immuable
 VERROU_SAGA = """
-PROTOCOLE DE DIAGNOSTIC (STRICT) :
-1. INTERDICTION D'INVENTION : Ne déduis jamais une apparence (yeux, habits, cheveux) ou un passé si l'extrait ne le cite pas explicitement. Écris "Non mentionné".
-2. MISSION DE DIAGNOSTIC : Ton rôle est de diagnostiquer les faits présents.
-   - Observation : Ce qui est écrit.
-   - Diagnostic : Ce que cela révèle sur l'état somatique ou la souveraineté.
-3. VÉRITÉS FIXES :
-   - AGES : Jonas (17 ans), Léo (15 ans), Zack (15 ans).
-   - IDENTITÉ : Zackary (officiel), Zack (amis). "Gaz" est une INSULTE, pas un pouvoir.
-   - VISIONS : Léo voit des "fils" [fil] d'auras. L'Ombre est une "ligne noire".
-   - AURAS : Jonas (Brun), Zack (Rouge/Noir), Autyssé (Bleu).
+COMMANDEMENTS DE FIDÉLITÉ (V16 - PRO ULTRA) :
+1. NUANCE LINGUISTIQUE : "Le Fils" [fis] = Identité. "Les fils" [fil] = Liens/Auras de Léo.
+2. ÉTATS FIXES : Jonas (17 ans, Brun), Léo (15 ans, Lumière), Zack (15 ans, Rouge/Noir).
+3. L'OMBRE : "Ligne noire" dans les visions de Léo. Menace de corruption.
+4. ZACK : Préfère "Zack" par ses amis. "Gaz" est une insulte de la Tribu. 
+5. RELATIONS : Zack/Jade = Couple asexuel (Souveraineté).
+6. RIGUEUR : Diagnostic basé sur les preuves. Si absent, écrire "Non mentionné".
 """
 
-# --- 2. FONCTIONS TECHNIQUES ---
+# --- 2. FONCTIONS ---
 
 def connecter_et_obtenir_onglet(nom_onglet):
     try:
@@ -39,14 +42,14 @@ def connecter_et_obtenir_onglet(nom_onglet):
         try:
             return ss.worksheet(nom_onglet)
         except gspread.exceptions.WorksheetNotFound:
-            nouvel_onglet = ss.add_worksheet(title=nom_onglet, rows="1000", cols="5")
-            nouvel_onglet.append_row(["Date", "Diagnostic", "Type"])
+            nouvel_onglet = ss.add_worksheet(title=nom_onglet, rows="2000", cols="5")
+            nouvel_onglet.append_row(["Date", "Diagnostic Pro", "Type"])
             return nouvel_onglet
     except Exception as e:
         st.error(f"Erreur Sheets : {e}")
         return None
 
-def lire_manuscrit(f):
+def lire_tout(f):
     try:
         if f.name.endswith(".pdf"):
             with pdfplumber.open(f) as pdf:
@@ -59,73 +62,53 @@ def lire_manuscrit(f):
             return "\n".join([extractText(p) for p in odt_doc.getElementsByType(P)])
         return ""
     except Exception as e:
-        st.error(f"Erreur lecture {f.name} : {e}")
         return ""
 
-def appel_ia(prompt):
-    try:
-        api_key = st.secrets["MISTRAL_API_KEY"]
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "mistral-large-latest", 
-            "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.0 # Suppression de toute créativité
-        }
-        r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
-        return r.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Erreur IA : {e}"
+def appel_ia_pro(prompt):
+    # Passage au modèle PRO pour une analyse profonde
+    model = genai.GenerativeModel('gemini-1.5-pro')
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(temperature=0.0)
+    )
+    return response.text
 
 # --- 3. INTERFACE ---
 
-st.set_page_config(page_title="L'Archiviste V15.0", layout="wide")
-st.title("🛡️ L'Archiviste : Diagnostic de la Saga")
+st.set_page_config(page_title="L'Archiviste PRO ULTRA", layout="wide")
+st.title("🛡️ L'Archiviste : Mode Pro (2M Tokens)")
 
-st.sidebar.header("📁 Manuscrits")
-fichiers = st.sidebar.file_uploader("Charger chapitres", type=["pdf", "docx", "odt"], accept_multiple_files=True)
-
+fichiers = st.sidebar.file_uploader("Charger l'intégralité de la Saga", type=["pdf", "docx", "odt"], accept_multiple_files=True)
 options_cible = ["Jonas", "Léo", "Zack", "Autyssé", "Jade", "SAGA"]
-nom_perso = st.sidebar.selectbox("Cible du diagnostic", options_cible)
+nom_perso = st.sidebar.selectbox("Cible du Diagnostic Profond", options_cible)
 
-if fichiers and st.button(f"🚀 Établir Diagnostic : {nom_perso}"):
-    with st.spinner(f"Analyse factuelle de {nom_perso}..."):
+if fichiers and st.button(f"🔍 Lancer Diagnostic Pro : {nom_perso}"):
+    with st.spinner("Analyse profonde de la mémoire de la saga..."):
         
-        texte_brut = "\n".join([lire_manuscrit(f) for f in fichiers])
+        # En version Pro, on ne coupe plus le texte. On prend TOUT.
+        texte_integral = "\n".join([lire_tout(f) for f in fichiers])
         
-        if nom_perso == "SAGA":
-            mission = """
-            DIAGNOSTIC SAGA :
-            1. État des Fils : Santé des liens d'auras.
-            2. Menace : Localisation et impact de l'Ombre (ligne noire).
-            3. Souveraineté Collective : Capacité du groupe à résister à la Tribu.
-            """
-            contexte = texte_brut[:8000]
-        else:
-            mission = f"""
-            DIAGNOSTIC FACTUEL : {nom_perso}.
-            1. PHYSIQUE (OBSERVATION) : Uniquement ce qui est explicitement décrit. (Si rien : "Information absente").
-            2. ÉTAT SOMATIQUE (DIAGNOSTIC) : Réaction du corps aux événements (froid, peur, contact).
-            3. RELATIONS (DIAGNOSTIC) : État du lien avec les autres (Fils de Lumière, Grizzly, Jade, Autyssé).
-            4. SOUVERAINETÉ (DIAGNOSTIC) : Moments où le personnage reprend son territoire intérieur.
-            5. FIL D'AURA : Couleur et proximité de la ligne noire (Ombre).
-            """
-            lignes = texte_brut.split('\n')
-            contexte = "\n".join([l for l in lignes if nom_perso.lower() in l.lower()][:50])
+        mission = f"""
+        DIAGNOSTIC ULTRA-PRÉCIS : {nom_perso}. 
+        Analyse l'évolution somatique et la souveraineté à travers tout le texte fourni.
+        Vérifie la cohérence des relations et des fils d'aura.
+        Signale toute contradiction avec les COMMANDEMENTS fournis.
+        """
 
-        prompt = f"{VERROU_SAGA}\n\nMISSION : {mission}\n\nEXTRAITS : {contexte}"
+        prompt = f"{VERROU_SAGA}\n\nMISSION : {mission}\n\nMANUSCRIT COMPLET : {texte_integral}"
         
-        resultat = appel_ia(prompt)
+        resultat = appel_ia_pro(prompt)
         st.session_state.resultat = resultat
         st.session_state.cible_actuelle = nom_perso
 
 if "resultat" in st.session_state:
     st.divider()
-    st.subheader(f"📖 Diagnostic Certifié : {st.session_state.cible_actuelle}")
+    st.subheader(f"📖 Diagnostic Pro : {st.session_state.cible_actuelle}")
     st.markdown(st.session_state.resultat)
     
     if st.button(f"💾 Archiver dans l'onglet {st.session_state.cible_actuelle}"):
         onglet = connecter_et_obtenir_onglet(st.session_state.cible_actuelle)
         if onglet:
             date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            onglet.append_row([date_now, st.session_state.resultat, "Diagnostic V15"])
-            st.success(f"✅ Diagnostic de {st.session_state.cible_actuelle} enregistré.")
+            onglet.append_row([date_now, st.session_state.resultat, "PRO ULTRA V16"])
+            st.success("✅ Archive Pro synchronisée.")
