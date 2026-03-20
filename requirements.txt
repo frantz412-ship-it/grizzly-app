@@ -4,4 +4,3 @@ google-generativeai
 st-gsheets-connection
 PyPDF2
 python-docx
-
