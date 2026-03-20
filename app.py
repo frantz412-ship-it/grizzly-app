@@ -34,96 +34,57 @@ else:
 # ==========================================
 
 CONSTANTES_SAGA = {
-    "Jonas": (
-"Jonas": """ÂGE: ~17 ans. Prénom complet: Jonas. Surnom: Grizzly (donné par Léo).
+    "Jonas": """ÂGE: ~17 ans. Prénom complet: Jonas. Surnom: Grizzly (donné par Léo).
 Orientation: Gay. Couple exclusif avec Léo (Moineau).
 Aura: VERTE (phosphorescent, braise froide dans les crises).
-Manifestation interne: 'Colère' — créature verte, yeux de charbon, fumée noire, surgit de sa poitrine lors des rages extrêmes.
+Manifestation interne: "Colère" — créature verte, yeux de charbon, fumée noire, surgit de sa poitrine lors des rages extrêmes.
 Capacités: chasseur expert (lance, couteau, fusil, pièges), tir méthodique et précis, instinct de survie.
 Traits physiques: yeux verts, cheveux bruns, cicatrice à la gorge, épaules étroites, clavicule visible.
 Talisman: petite boîte de métal.
 Thèmes: culpabilité du chasseur, protection des siens, Colère comme ombre intérieure.""",
-    "Léo": (
-        "ÂGE: ~15-17 ans selon le tome. Prénom complet: Léo. Surnom: Moineau (donné par Jonas).
-"
-        "Orientation: Bisexuel. Couple exclusif avec Jonas (Grizzly).
-"
-        "Aura: BLEUE (halo bleu, liens de lumière bleue).
-"
-        "Capacités: voit les fils/liens lumineux entre les gens; la Louve de lumière blanche sort de sa poitrine (gardienne);
-"
-        "  yeux qui brillent lors des visions; peut 'arrêter le temps' dans les moments de crise intense.
-"
-        "Traits physiques: cheveux blonds, cicatrice fine sur la lèvre, yeux lumineux lors des visions.
-"
-        "Talisman: la Louve de lumière (intérieure).
-"
-        "Thèmes: protection, voir ce que les autres ne voient pas, lien entre les membres du groupe."
-    ),
-    "Zack": (
-        "ÂGE: 15 ans (Tome 2). Prénom choisi: Zackary. Ancien surnom: Gaz. Prénom légal d'origine: Albert (révélé par Hélène, T3).
-"
-        "Orientation: en découverte active — pas d'étiquette fixe dans le texte; intimité avec Jonas, Léo, Jade, Autyss selon les tomes.
-"
-        "Aura: ROUGE CHAUD (braise, incandescent — jamais noir).
-"
-        "Capacités physiques: membranes/ailes (flancs + entre jambes = 'queue d'hirondelle'), deuxième paupière translucide,
-"
-        "  vol/planeur, électrostatique involontaire (gaz corporel + étincelle = combustion). Les ailes peuvent être blessées/déchirées.
-"
-        "Traits physiques: yeux noirs avec reflets noisette-rouille (après transformation par la Louve), corps très mince,
-"
-        "  cicatrices d'attaches de membranes, sourire 'qui n'appartient qu'à dehors'.
-"
-        "Talismans (jamais quittés): louveteau de pierre (sculpté par Jonas, T2) + sac en tissu avec fleur brodée + breloque-couteau.
-"
-        "Mère: Hélène (retrouvée T3), le décrit comme 'enfant phénix'.
-"
-        "Thèmes: corps passager (pas outil), apprendre le consentement, trouver son nom propre, trauma de la Cathédrale."
-    ),
-    "Jade": (
-        "Rôle: cheffe/matriarche de terrain, figure de stabilité du groupe.
-"
-        "Orientation: lien fort et progressif avec Zack; relation physique désirée mais à son rythme.
-"
-        "Aura: JAUNE/DORÉE (ligne jaune dans les visions de Léo).
-"
-        "Arme principale: fronde (elle porte aussi celle de Zack quand il en a besoin).
-"
-        "Traits: posture droite même sous pression, sens tactique, protège les plus vulnérables.
-"
-        "Thèmes: ne pas s'effacer pour le groupe, apprendre à dire non et oui avec clarté."
-    ),
-    "Autyss": (
-        "Rôle: stratège, 'chirurgien', pensée en colonnes mentales.
-"
-        "Aura: VIOLETTE (ligne violette/craie violette dans les visions de Léo).
-"
-        "Capacités: analyse tactique extrême, dissociation contrôlée, sutures/soins médicaux, raisonnement en tableaux.
-"
-        "Besoins: constantes sensorielles pour ne pas 'exploser' (fleur brodée, pierre, métal, eau chaude).
-"
-        "Talisman emprunté: sac de Zack (prêté dans les moments de crise).
-"
-        "Traits: peu de contact physique voulu initialement, s'exprime en poèmes lors des moments importants, observe avant d'agir.
-"
-        "Thèmes: trouver des mots pour les émotions, colonnes vs chaos, apprendre à ressentir sans disséquer."
-    ),
-    "SAGA": (
-        "Thèmes centraux: Reconstruction post-trauma; souveraineté du corps ('corps passager, jamais outil');
-"
-        "  l'Ombre (force antagoniste), la Cathédrale (organisation ennemie), la Voix (réseau de résistance);
-"
-        "  règles de consentement inventées par le groupe autour du feu.
-"
-        "Règles du groupe (T3): base Jonas–Léo intouchable; si flou = non; jalousie nommée avant qu'elle pourrisse;
-"
-        "  pas de sacrifice en douce; pas de sexe en secret; rappeler la règle avant de punir.
-"
-        "Antagonistes: Cité de pierre, Luceduort (commandos volants), Cathédrale.
-"
-        "Lieux clés: Badlands (désert rouge, tornades), Village Soleil, Forge, relais caravane."
-    ),
+
+    "Léo": """ÂGE: ~15-17 ans selon le tome. Prénom complet: Léo. Surnom: Moineau (donné par Jonas).
+Orientation: Bisexuel. Couple exclusif avec Jonas (Grizzly).
+Aura: BLEUE (halo bleu, liens de lumière bleue).
+Capacités: voit les fils/liens lumineux entre les gens; la Louve de lumière blanche sort de sa poitrine (gardienne);
+  yeux qui brillent lors des visions; peut "arrêter le temps" dans les moments de crise intense.
+Traits physiques: cheveux blonds, cicatrice fine sur la lèvre, yeux lumineux lors des visions.
+Talisman: la Louve de lumière (intérieure).
+Thèmes: protection, voir ce que les autres ne voient pas, lien entre les membres du groupe.""",
+
+    "Zack": """ÂGE: 15 ans (Tome 2). Prénom choisi: Zackary. Ancien surnom: Gaz. Prénom légal d'origine: Albert (révélé par Hélène, T3).
+Orientation: en découverte active — pas d'étiquette fixe dans le texte; intimité avec Jonas, Léo, Jade, Autyss selon les tomes.
+Aura: ROUGE CHAUD (braise, incandescent — jamais noir).
+Capacités physiques: membranes/ailes (flancs + entre jambes = "queue d'hirondelle"), deuxième paupière translucide,
+  vol/planeur, électrostatique involontaire (gaz corporel + étincelle = combustion). Les ailes peuvent être blessées/déchirées.
+Traits physiques: yeux noirs avec reflets noisette-rouille (après transformation par la Louve), corps très mince,
+  cicatrices d'attaches de membranes, sourire "qui n'appartient qu'à dehors".
+Talismans (jamais quittés): louveteau de pierre (sculpté par Jonas, T2) + sac en tissu avec fleur brodée + breloque-couteau.
+Mère: Hélène (retrouvée T3), le décrit comme "enfant phénix".
+Thèmes: corps passager (pas outil), apprendre le consentement, trouver son nom propre, trauma de la Cathédrale.""",
+
+    "Jade": """Rôle: cheffe/matriarche de terrain, figure de stabilité du groupe.
+Orientation: lien fort et progressif avec Zack; relation physique désirée mais à son rythme.
+Aura: JAUNE/DORÉE (ligne jaune dans les visions de Léo).
+Arme principale: fronde (elle porte aussi celle de Zack quand il en a besoin).
+Traits: posture droite même sous pression, sens tactique, protège les plus vulnérables.
+Thèmes: ne pas s'effacer pour le groupe, apprendre à dire non et oui avec clarté.""",
+
+    "Autyss": """Rôle: stratège, "chirurgien", pensée en colonnes mentales.
+Aura: VIOLETTE (ligne violette/craie violette dans les visions de Léo).
+Capacités: analyse tactique extrême, dissociation contrôlée, sutures/soins médicaux, raisonnement en tableaux.
+Besoins: constantes sensorielles pour ne pas "exploser" (fleur brodée, pierre, métal, eau chaude).
+Talisman emprunté: sac de Zack (prêté dans les moments de crise).
+Traits: peu de contact physique voulu initialement, s'exprime en poèmes lors des moments importants, observe avant d'agir.
+Thèmes: trouver des mots pour les émotions, colonnes vs chaos, apprendre à ressentir sans disséquer.""",
+
+    "SAGA": """Thèmes centraux: Reconstruction post-trauma; souveraineté du corps ("corps passager, jamais outil");
+  l'Ombre (force antagoniste), la Cathédrale (organisation ennemie), la Voix (réseau de résistance);
+  règles de consentement inventées par le groupe autour du feu.
+Règles du groupe (T3): base Jonas–Léo intouchable; si flou = non; jalousie nommée avant qu'elle pourrisse;
+  pas de sacrifice en douce; pas de sexe en secret; rappeler la règle avant de punir.
+Antagonistes: Cité de pierre, Luceduort (commandos volants), Cathédrale.
+Lieux clés: Badlands (désert rouge, tornades), Village Soleil, Forge, relais caravane.""",
 }
 
 # ==========================================
