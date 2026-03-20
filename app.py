@@ -1,4 +1,4 @@
-import streamlit as st
+    import streamlit as st
 import pandas as pd
 import re
 import os
@@ -8,20 +8,20 @@ from PyPDF2 import PdfReader
 from docx import Document
 from streamlit_gsheets import GSheetsConnection
 
-# --- 1. CONFIGURATION & CANON ---
+# --- 1. CONFIGURATION & CANON DÉFINITIF ---
 st.set_page_config(page_title="Grizzly & Moineau - Lab", page_icon="📚", layout="wide")
 
 CANON_DATA = {
-    "Jonas": "ÂGE: 17 ans. Noms: Jonas. Surnoms: Grizzly, Grizz. Couple exclusif Léo. Aura: VERTE. Yeux verts, cheveux bruns, cicatrice gorge.",
-    "Léo": "ÂGE: 15-17 ans. Noms: Léo. Surnoms: Moineau. Couple exclusif Jonas. Aura: BLEUE. Louve blanche, voit les fils.",
+    "Jonas": "ÂGE: 17 ans. Noms: Jonas. Surnoms: Grizzly, Grizz. Couple exclusif Léo. Aura: VERTE phosphorescente (Colère). Yeux verts, cheveux bruns, cicatrice gorge.",
+    "Léo": "ÂGE: 15-17 ans. Noms: Léo. Surnoms: Moineau. Couple exclusif Jonas. Aura: BLEUE. Louve blanche de lumière (gardienne), voit les fils.",
     "Zack": "ÂGE: 15 ans. Noms: Gaz (ancien), Albert (légal), Zackary/Zack (choisi). Surnoms: Gaz. Aura: ROUGE CHAUD. Ailes aux flancs, vol. Talismans: Louveteau pierre, sac fleur. NOTE: Appelle Luc 'Gremlin'.",
-    "Jade": "Noms: Jade. Surnoms: Cheffe ou Matriarche de terrain. Aura: JAUNE/DORÉE. Fronde. Souveraineté, non-sacrificielle.",
-    "Autyss": "Noms: Autyss. Surnoms: Chirurgien des colonnes, Compteur de poèmes. Aura: VIOLETTE. Colonnes/Diagrammes. Poésie pour le crucial.",
+    "Jade": "Noms: Jade. Surnoms: Cheffe ou Matriarche de terrain. Aura: JAUNE/DORÉE. Arme: Fronde. Souveraineté, non-sacrificielle.",
+    "Autyss": "Noms: Autyss. Surnoms: Chirurgien des colonnes, Compteur de poèmes. Aura: VIOLETTE. Capacité: Colonnes/Diagrammes. Poésie pour le crucial.",
     "Luc": "Noms: Luc. Surnoms: Gremlin (donné par Zack). Rôle: Personnage secondaire.",
     "SAGA": "Couple Jonas-Léo intouchable. Si flou = non. Corps passager, jamais outil. Consentement explicite. Cathédrale vs Voix."
 }
 
-# --- 2. INITIALISATION SESSION ---
+# --- 2. MÉMOIRE DE L'APPLICATION ---
 if 'chapitres' not in st.session_state: st.session_state.chapitres = []
 if 'analyses' not in st.session_state: st.session_state.analyses = []
 
@@ -43,6 +43,7 @@ def extraire_texte(file):
     return ""
 
 def decouper_chapitres(texte):
+    # Regex (?i) : Insensible à la casse (Chapitre, CHAPITRE, chapitre...)
     parts = re.split(r'(?i)(chapitre\s+\d+)', texte)
     if len(parts) <= 1:
         return [{"titre": "Manuscrit Complet", "contenu": texte}]
@@ -53,11 +54,10 @@ def decouper_chapitres(texte):
             chapitres.append({"titre": parts[i], "contenu": parts[i+1]})
     return chapitres
 
-# --- 4. CONNEXION IA (Utilisation de Gemini 1.5 Flash) ---
+# --- 4. CONNEXION IA (Modèle Stable 1.5 Flash) ---
 model = None
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # CORRECTION : Utilisation d'un modèle existant et stable
     model = genai.GenerativeModel('gemini-1.5-flash') 
 except Exception as e:
     st.error(f"⚠️ Erreur config Gemini : {e}")
@@ -91,16 +91,18 @@ if st.session_state.chapitres:
     
     with col_sel:
         perso = st.selectbox("Personnage à scanner", list(CANON_DATA.keys()))
+        
+        # Filtrage intelligent sur le contenu
         filtre = [c for c in st.session_state.chapitres if perso.lower() in c['contenu'].lower() or perso == "SAGA"]
-        st.caption(f"{len(filtre)} chapitres correspondent.")
+        st.caption(f"{len(filtre)} chapitres correspondent à {perso}.")
         selection = st.multiselect("Chapitres à envoyer à l'IA", filtre, format_func=lambda x: x['titre'])
 
     with col_outils:
-        st.subheader("Boutons d'analyse")
+        st.subheader("Outils d'analyse")
         btns = st.columns(4)
         config_outils = {
             "🧠 Psyché": "Trauma, évolution psychologique et émotions.",
-            "⚔️ Physique": "Traits physiques, Aura et manifestations de pouvoir.",
+            "⚔️ Physique": "Portrait physique, Aura et manifestations de pouvoir.",
             "🕸️ Liens": "Fils bleus, relations de groupe et complicité.",
             "🕵️ Incohérences": "Contradictions avec le Canon fixé."
         }
@@ -110,6 +112,7 @@ if st.session_state.chapitres:
                 if not model: st.error("IA non connectée.")
                 elif not selection: st.error("Choisis au moins un chapitre !")
                 else:
+                    # On envoie les 10 000 premiers caractères par chapitre pour rester dans les clous
                     contexte = "\n\n".join([f"### {c['titre']}\n{c['contenu'][:10000]}" for c in selection])
                     prompt = f"""
                     RÔLE : Expert narratif de la Saga 'Grizzly et Moineau'.
@@ -120,10 +123,10 @@ if st.session_state.chapitres:
                     
                     CONSIGNES :
                     1. Focus analyse : {focus}
-                    2. Si info absente -> "Non mentionné dans le manuscrit."
-                    3. Si contradiction -> "INCOHÉRENCE DÉTECTÉE" + citation courte.
+                    2. Si info absente des extraits -> écris exactement "Non mentionné dans le manuscrit."
+                    3. Si le texte contredit le canon -> écris "INCOHÉRENCE DÉTECTÉE" + citation courte du texte.
                     4. RESPECTER LE CANON COMME UNE LOI ABSOLUE.
-                    5. Format Markdown.
+                    5. Format Markdown avec des sous-sections stables.
                     """
                     try:
                         with st.spinner(f"Analyse de {perso} en cours..."):
@@ -132,7 +135,7 @@ if st.session_state.chapitres:
                             
                             st.session_state.analyses.insert(0, {
                                 "id": datetime.now(timezone.utc).timestamp(),
-                                "date": datetime.now().strftime("%H:%M"),
+                                "date": datetime.now().strftime("%d/%m %H:%M"),
                                 "perso": perso, "type": label, "texte": txt_ia
                             })
                     except Exception as e:
@@ -141,12 +144,12 @@ if st.session_state.chapitres:
 # --- 7. HISTORIQUE & ARCHIVAGE ---
 st.divider()
 for ana in st.session_state.analyses:
-    unique_key = f"{ana['id']}-{ana['perso']}-{ana['type']}"
+    u_key = f"{ana['id']}-{ana['perso']}"
     
     with st.expander(f"📌 {ana['type']} - {ana['perso']} ({ana['date']})", expanded=True):
         st.markdown(ana['texte'])
         
-        if st.button(f"💾 Archiver {ana['perso']}", key=f"btn-{unique_key}"):
+        if st.button(f"💾 Archiver {ana['perso']}", key=f"btn-{u_key}"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 try:
@@ -160,5 +163,5 @@ for ana in st.session_state.analyses:
                 conn.update(worksheet=ana['perso'], data=final_df)
                 st.success(f"Archivé dans l'onglet '{ana['perso']}' !")
             except Exception as e:
-                st.error(f"Erreur GSheets : {e}")
-                
+                st.error(f"Erreur GSheets (Vérifie tes identifiants de projet ou si l'onglet existe) : {e}")
+    
