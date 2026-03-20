@@ -1,6 +1,7 @@
 streamlit
-pandas
 google-generativeai
-st-gsheets-connection
-PyPDF2
+pandas
 python-docx
+pdfplumber
+odfpy
+streamlit-gsheets
