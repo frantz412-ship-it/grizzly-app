@@ -58,34 +58,42 @@ CONSTANTES_SAGA = {
 }
 
 # ==========================================
-# 2. MOTEUR IA AVEC BASCULE PRO/FLASH
+# ==========================================
+# 2. MOTEUR IA (VERSION ULTRA-STABLE)
 # ==========================================
 
-def appel_ia(prompt: str, temperature: float = 0.1, model_name: str = "gemini-1.5-pro") -> str:
-    """Tentative en Pro, bascule sur Flash si Quota 429 épuisé."""
-    try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=4096,
-            ),
-        )
-        return response.text or ""
-    except Exception as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            st.warning("⚠️ Quota Pro saturé. Bascule sur Gemini 1.5 Flash...")
-            try:
-                response = client.models.generate_content(
-                    model="gemini-1.5-flash",
-                    contents=prompt,
-                    config=types.GenerateContentConfig(temperature=temperature, max_output_tokens=4096),
-                )
-                return response.text or ""
-            except Exception as e2:
-                return f"❌ Erreur critique : {str(e2)}"
-        return f"❌ Erreur Gemini : {str(e)}"
+def appel_ia(prompt: str, temperature: float = 0.1) -> str:
+    """
+    Tente d'utiliser les modèles Pro de manière séquentielle.
+    Si 404 ou 429, bascule sur le suivant jusqu'au Flash.
+    """
+    # Liste des modèles à tester par ordre de priorité (Pro stable, puis Pro beta, puis Flash)
+    modeles_a_tester = ["gemini-1.5-pro", "gemini-1.5-pro-002", "gemini-1.5-flash"]
+    
+    derniere_erreur = ""
+
+    for model_id in modeles_a_tester:
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                    max_output_tokens=4096,
+                ),
+            )
+            return response.text or ""
+            
+        except Exception as e:
+            derniere_erreur = str(e)
+            # Si c'est un 404 (non trouvé) ou 429 (quota), on passe au modèle suivant
+            if "404" in derniere_erreur or "429" in derniere_erreur:
+                continue
+            else:
+                # Pour les autres erreurs (clé API, etc.), on s'arrête
+                return f"❌ Erreur critique Gemini : {derniere_erreur}"
+
+    return f"❌ Échec total : Aucun modèle n'a répondu. (Dernière erreur : {derniere_erreur})"
 
 # ==========================================
 # 3. LECTURE MULTI-FORMATS
