@@ -35,22 +35,14 @@ else:
 
 CONSTANTES_SAGA = {
     "Jonas": (
-        "ÂGE: ~17 ans. Prénom complet: Jonas. Surnom: Grizzly (donné par Léo).
-"
-        "Orientation: Gay. Couple exclusif avec Léo (Moineau).
-"
-        "Aura: VERTE (phosphorescent, braise froide dans les crises).
-"
-        "Manifestation interne: 'Colère' — créature verte, yeux de charbon, fumée noire, surgit de sa poitrine lors des rages extrêmes.
-"
-        "Capacités: chasseur expert (lance, couteau, fusil, pièges), tir méthodique et précis, instinct de survie.
-"
-        "Traits physiques: yeux verts, cheveux bruns, cicatrice à la gorge, épaules étroites, clavicule visible.
-"
-        "Talisman: petite boîte de métal.
-"
-        "Thèmes: culpabilité du chasseur, protection des siens, Colère comme ombre intérieure."
-    ),
+"Jonas": """ÂGE: ~17 ans. Prénom complet: Jonas. Surnom: Grizzly (donné par Léo).
+Orientation: Gay. Couple exclusif avec Léo (Moineau).
+Aura: VERTE (phosphorescent, braise froide dans les crises).
+Manifestation interne: 'Colère' — créature verte, yeux de charbon, fumée noire, surgit de sa poitrine lors des rages extrêmes.
+Capacités: chasseur expert (lance, couteau, fusil, pièges), tir méthodique et précis, instinct de survie.
+Traits physiques: yeux verts, cheveux bruns, cicatrice à la gorge, épaules étroites, clavicule visible.
+Talisman: petite boîte de métal.
+Thèmes: culpabilité du chasseur, protection des siens, Colère comme ombre intérieure.""",
     "Léo": (
         "ÂGE: ~15-17 ans selon le tome. Prénom complet: Léo. Surnom: Moineau (donné par Jonas).
 "
