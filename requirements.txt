@@ -4,4 +4,5 @@ pandas
 python-docx
 pdfplumber
 odfpy
-streamlit-gsheets
+gspread
+google-auth
