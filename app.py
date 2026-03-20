@@ -65,23 +65,36 @@ def decouper_chapitres(texte: str):
             chapitres.append({"titre": parts[i].strip(), "contenu": parts[i + 1].strip()})
     return chapitres
 
-# --- 4. CONNEXION IA (Roc de Pierre) ---
-def appel_ia_stable(prompt):
-    if "GEMINI_API_KEY" not in st.secrets:
-        return "❌ Clé API manquante dans les Secrets."
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# --- 4. CONNEXION IA (Gemini stable) ---
+def appel_ia_stable(prompt: str) -> str:
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return "❌ Clé API GEMINI_API_KEY manquante dans les Secrets."
     
-    # Utilisation des modèles confirmés par ton diagnostic
-    modeles = ["gemini-3-flash-preview", "gemini-2.0-flash", "gemini-1.5-flash"]
-    for m_name in modeles:
-        try:
-            model = genai.GenerativeModel(m_name)
-            resp = model.generate_content(prompt, generation_config={"temperature": 0.2})
-            return resp.text
-        except: continue
-    return "❌ Aucun modèle n'a répondu."
+    # Config une seule fois par appel
+    genai.configure(api_key=api_key)
+    
+    try:
+        # Modèle texte stable et dispo dans l'API (à ajuster selon ton choix)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        resp = model.generate_content(
+            prompt,
+            generation_config={"temperature": 0.2}
+        )
+        return resp.text or ""
+    except Exception as e:
+        return f"❌ Erreur Gemini : {e}"
 
-# --- 5. SIDEBAR ---
+# --- 5. CONNEXION GOOGLE SHEETS (une fois) ---
+def get_gsheets_conn():
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        return conn
+    except Exception as e:
+        st.error(f"Erreur de connexion à Google Sheets : {e}")
+        return None
+
+# --- 6. SIDEBAR ---
 with st.sidebar:
     st.header("📂 Bibliothèque")
     files = st.file_uploader("Charger Tomes (PDF/DOCX/ODT)", accept_multiple_files=True)
@@ -100,7 +113,7 @@ with st.sidebar:
         st.session_state.analyses = []
         st.rerun()
 
-# --- 6. LABORATOIRE D'ANALYSE ---
+# --- 7. LABORATOIRE D'ANALYSE ---
 st.title("🔬 Laboratoire Grizzly & Moineau")
 
 if st.session_state.chapitres:
@@ -108,8 +121,15 @@ if st.session_state.chapitres:
     
     with col_sel:
         perso = st.selectbox("Personnage cible", list(CANON_DATA.keys()))
-        filtre = [c for c in st.session_state.chapitres if perso.lower() in c["contenu"].lower() or perso == "SAGA"]
-        selection = st.multiselect("Chapitres à analyser", filtre, format_func=lambda x: x["titre"])
+        filtre = [
+            c for c in st.session_state.chapitres
+            if perso.lower() in c["contenu"].lower() or perso == "SAGA"
+        ]
+        selection = st.multiselect(
+            "Chapitres à analyser",
+            filtre,
+            format_func=lambda x: x["titre"]
+        )
 
     with col_outils:
         st.subheader("Outils d'Analyse")
@@ -126,8 +146,14 @@ if st.session_state.chapitres:
                 if not selection:
                     st.error("Sélectionne au moins un chapitre !")
                 else:
-                    contexte = "\n\n".join([f"### {c['titre']}\n{c['contenu'][:8000]}" for c in selection])
-                    prompt = f"CANON {perso}: {CANON_DATA[perso]}\n\nANALYSE: {focus}\n\nTEXTE:\n{contexte}"
+                    contexte = "\n\n".join(
+                        [f"### {c['titre']}\n{c['contenu'][:8000]}" for c in selection]
+                    )
+                    prompt = (
+                        f"CANON {perso}: {CANON_DATA[perso]}\n\n"
+                        f"ANALYSE FOCUS: {focus}\n\n"
+                        f"TEXTE:\n{contexte}"
+                    )
                     
                     with st.spinner(f"Analyse de {perso}..."):
                         txt_ia = appel_ia_stable(prompt)
@@ -139,18 +165,26 @@ if st.session_state.chapitres:
                             "texte": txt_ia
                         })
 
-# --- 7. HISTORIQUE & GSHEETS ---
+# --- 8. HISTORIQUE & GSHEETS ---
 st.divider()
+conn = get_gsheets_conn()
+
 for ana in st.session_state.analyses:
     with st.expander(f"📌 {ana['type']} - {ana['perso']} ({ana['date']})", expanded=True):
         st.markdown(ana["texte"])
-        if st.button(f"💾 Archiver {ana['perso']}", key=f"btn-{ana['id']}"):
+        if conn and st.button(f"💾 Archiver {ana['perso']}", key=f"btn-{ana['id']}"):
             try:
-                conn = st.connection("gsheets", type=GSheetsConnection)
-                try: existing = conn.read(worksheet=ana["perso"])
-                except: existing = pd.DataFrame()
+                try:
+                    existing = conn.read(worksheet=ana["perso"])
+                except Exception:
+                    existing = pd.DataFrame()
+                
                 new_row = pd.DataFrame([ana])
-                final_df = pd.concat([existing, new_row], ignore_index=True) if not existing.empty else new_row
+                if existing is not None and not existing.empty:
+                    final_df = pd.concat([existing, new_row], ignore_index=True)
+                else:
+                    final_df = new_row
+
                 conn.update(worksheet=ana["perso"], data=final_df)
                 st.success(f"Archivé dans l'onglet '{ana['perso']}' !")
             except Exception as e:
