@@ -11,26 +11,37 @@ from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
 
-# --- 1. CONFIGURATION ET VÉRITÉS ABSOLUES ---
+# --- 1. CONFIGURATION ET COMMANDEMENTS (FEW-SHOT INCLUS) ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
 VERROU_SAGA = """
-VÉRITÉS ABSOLUES ET PHYSIQUES :
-- JONAS (Grizzly) : 17 ans, brun, regard 'fatigué raide', pantalons trop larges. Fils de la Survie.
-- LÉO (Moineau) : 17 ans, cheveux clairs (presque blancs), Fils de Lumière. Guide.
-- ZACK (Gaz) : 15 ans, plus petit, Éclair noir, posture fœtale. Enfant de trop.
-- AUTYSSÉ (Cartographe) : Physique rigide, regard analytique. Fils de la Structure.
+COMMANDEMENTS DE LA SAGA (À RESPECTER STRICTEMENT) :
 
-NUANCE LINGUISTIQUE CRUCIALE :
-1. "Le Fils" (prononcé [fiss]) : Désigne l'identité, l'enfant (ex: Léo est le Fils de Lumière).
-2. "Les fils" (prononcé [fil]) : Désigne les liens invisibles, les cordes, ou les fils de pensée que Léo manipule.
-INTERDICTION : Ne jamais confondre l'identité du personnage et ses outils de pensée.
+1. NUANCE LINGUISTIQUE (RÈGLE DU FILS) :
+   - "Le Fils" [fiss] : Identité de Léo (Fils de Lumière), de Jonas (Fils de la Survie), etc.
+   - "Les fils" [fil] : Liens invisibles, boussoles mentales, fils de pensée.
+   - [FEW-SHOT EXEMPLE] :
+     ❌ INCORRECT : "Léo est perdu car il n'est plus le Fils de Lumière."
+     ✅ CORRECT : "Léo est perdu car ses fils de pensée (concentration) se cassent."
+
+2. PERSPECTIVE VICTIME/AGRESSEUR :
+   - Le refrain "Gaz... gaz... gaz..." est une INSULTE de la TRIBU.
+   - Zack (Gaz) SUBIT ce mot comme une blessure. Il ne le dit jamais de lui-même.
+   - [FEW-SHOT EXEMPLE] :
+     ❌ INCORRECT : "Zack commence à dire Gaz... gaz... gaz..."
+     ✅ CORRECT : "Zack se fige en entendant les moqueries 'Gaz... gaz...' de la Tribu."
+
+3. PORTRAITS PHYSIQUES :
+   - JONAS : 17 ans, brun, pantalons trop larges, regard fatigué.
+   - LÉO : 17 ans, cheveux presque blancs (Fils de Lumière), guide.
+   - ZACK : 15 ans, petit, éclair noir, posture fœtale.
+   - AUTYSSÉ : Physique rigide, regard 'Colonnes'.
 """
 
 # --- 2. FONCTIONS TECHNIQUES ---
 
 def connecter_et_obtenir_onglet(nom_onglet):
-    """Connexion et création d'onglet si manquant"""
+    """Gère la connexion et crée l'onglet s'il n'existe pas"""
     try:
         json_info = json.loads(st.secrets["GCP_JSON_BRUT"], strict=False)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -45,11 +56,11 @@ def connecter_et_obtenir_onglet(nom_onglet):
             nouvel_onglet.append_row(["Date", "Analyse", "Type"])
             return nouvel_onglet
     except Exception as e:
-        st.error(f"❌ Erreur de connexion : {e}")
+        st.error(f"❌ Erreur Google Sheets : {e}")
         return None
 
 def lire_manuscrit(f):
-    """Lecteur universel : PDF, DOCX et ODT"""
+    """Supporte PDF, DOCX et ODT"""
     try:
         if f.name.endswith(".pdf"):
             with pdfplumber.open(f) as pdf:
@@ -66,43 +77,52 @@ def lire_manuscrit(f):
         return ""
 
 def appel_ia(prompt):
+    """Interroge l'IA avec les contraintes strictes"""
     try:
         api_key = st.secrets["MISTRAL_API_KEY"]
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         payload = {
             "model": "mistral-large-latest", 
             "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.2
+            "temperature": 0.1 # Température basse pour plus de rigueur
         }
         r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
         return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
         return f"Erreur IA : {e}"
 
-# --- 3. INTERFACE ---
+# --- 3. INTERFACE UTILISATEUR ---
 
-st.set_page_config(page_title="L'Archiviste V9.0", layout="wide")
-st.title("🛡️ L'Archiviste : Mémoire de la Saga")
+st.set_page_config(page_title="L'Archiviste V10.0", layout="wide")
+st.title("🛡️ L'Archiviste : Gardien de la Saga")
 
 # Sidebar
 st.sidebar.header("📁 Documents")
-fichiers = st.sidebar.file_uploader("Charger manuscrits", type=["pdf", "docx", "odt"], accept_multiple_files=True)
+fichiers = st.sidebar.file_uploader("Charger chapitres", type=["pdf", "docx", "odt"], accept_multiple_files=True)
 
 options_cible = ["Jonas", "Léo", "Zack", "Autyssé", "SAGA"]
 nom_perso = st.sidebar.selectbox("Cible de l'analyse", options_cible)
 
 # Analyse
 if fichiers and st.button(f"🚀 Lancer l'analyse : {nom_perso}"):
-    with st.spinner(f"L'Archiviste étudie les fils de {nom_perso}..."):
+    with st.spinner(f"L'Archiviste vérifie les fils de {nom_perso}..."):
         
         texte_brut = "\n".join([lire_manuscrit(f) for f in fichiers])
         
         if nom_perso == "SAGA":
-            mission = "ANALYSE TRANSVERSALE : Cohérence du monde, thèmes (Reconstruction) et dynamique du groupe."
+            mission = """
+            MISSION : ANALYSE TRANSVERSALE. 
+            Vérifier la cohérence du monde et l'évolution des thèmes.
+            RAPPEL : Léo est le guide via les fils (liens), ne pas confondre avec son identité de Fils.
+            """
             contexte = texte_brut[:7000]
         else:
-            mission = f"PORTRAIT PSYCHOLOGIQUE ET PHYSIQUE DE {nom_perso}. Analyse son état somatique et sa souveraineté."
-            # On cherche les passages où le nom ou l'alias apparaît
+            mission = f"""
+            MISSION : PORTRAIT PSYCHOLOGIQUE ET PHYSIQUE DE {nom_perso}.
+            Analyse l'état somatique et la souveraineté.
+            RAPPEL : Si c'est Zack, traite l'insulte 'Gaz' comme une agression externe.
+            """
+            # Extraction des passages clés
             lignes = texte_brut.split('\n')
             contexte = "\n".join([l for l in lignes if nom_perso.lower() in l.lower()][:40])
 
@@ -115,12 +135,12 @@ if fichiers and st.button(f"🚀 Lancer l'analyse : {nom_perso}"):
 # Affichage et Sauvegarde
 if "resultat" in st.session_state:
     st.divider()
-    st.subheader(f"📖 Résultat : {st.session_state.cible_actuelle}")
+    st.subheader(f"📖 Analyse archivée : {st.session_state.cible_actuelle}")
     st.markdown(st.session_state.resultat)
     
     if st.button(f"💾 Sauvegarder dans l'onglet {st.session_state.cible_actuelle}"):
         onglet = connecter_et_obtenir_onglet(st.session_state.cible_actuelle)
         if onglet:
             date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            onglet.append_row([date_now, st.session_state.resultat, "Analyse"])
-            st.success(f"✅ Analyse de {st.session_state.cible_actuelle} synchronisée !")
+            onglet.append_row([date_now, st.session_state.resultat, "Analyse Verrouillée"])
+            st.success(f"✅ Dossier {st.session_state.cible_actuelle} mis à jour !")
