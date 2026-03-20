@@ -8,20 +8,20 @@ from PyPDF2 import PdfReader
 from docx import Document
 from streamlit_gsheets import GSheetsConnection
 
-# --- 1. CONFIGURATION & CANON DÉFINITIF ---
+# --- 1. CONFIGURATION & CANON ---
 st.set_page_config(page_title="Grizzly & Moineau - Lab", page_icon="📚", layout="wide")
 
 CANON_DATA = {
-    "Jonas": "ÂGE: 17 ans. Noms: Jonas. Surnoms: Grizzly, Grizz. Couple exclusif Léo. Aura: VERTE phosphorescente (Colère). Yeux verts, cheveux bruns, cicatrice gorge.",
-    "Léo": "ÂGE: 15-17 ans. Noms: Léo. Surnoms: Moineau. Couple exclusif Jonas. Aura: BLEUE. Louve blanche de lumière (gardienne), voit les fils.",
+    "Jonas": "ÂGE: 17 ans. Noms: Jonas. Surnoms: Grizzly, Grizz. Couple exclusif Léo. Aura: VERTE. Yeux verts, cheveux bruns, cicatrice gorge.",
+    "Léo": "ÂGE: 15-17 ans. Noms: Léo. Surnoms: Moineau. Couple exclusif Jonas. Aura: BLEUE. Louve blanche, voit les fils.",
     "Zack": "ÂGE: 15 ans. Noms: Gaz (ancien), Albert (légal), Zackary/Zack (choisi). Surnoms: Gaz. Aura: ROUGE CHAUD. Ailes aux flancs, vol. Talismans: Louveteau pierre, sac fleur. NOTE: Appelle Luc 'Gremlin'.",
-    "Jade": "Noms: Jade. Surnoms: Cheffe ou Matriarche de terrain. Aura: JAUNE/DORÉE. Arme: Fronde. Souveraineté, non-sacrificielle.",
-    "Autyss": "Noms: Autyss. Surnoms: Chirurgien des colonnes, Compteur de poèmes. Aura: VIOLETTE. Capacité: Colonnes/Diagrammes. Poésie pour le crucial.",
+    "Jade": "Noms: Jade. Surnoms: Cheffe ou Matriarche de terrain. Aura: JAUNE/DORÉE. Fronde. Souveraineté, non-sacrificielle.",
+    "Autyss": "Noms: Autyss. Surnoms: Chirurgien des colonnes, Compteur de poèmes. Aura: VIOLETTE. Colonnes/Diagrammes. Poésie pour le crucial.",
     "Luc": "Noms: Luc. Surnoms: Gremlin (donné par Zack). Rôle: Personnage secondaire.",
     "SAGA": "Couple Jonas-Léo intouchable. Si flou = non. Corps passager, jamais outil. Consentement explicite. Cathédrale vs Voix."
 }
 
-# --- 2. MÉMOIRE DE L'APPLICATION (Session State) ---
+# --- 2. INITIALISATION SESSION ---
 if 'chapitres' not in st.session_state: st.session_state.chapitres = []
 if 'analyses' not in st.session_state: st.session_state.analyses = []
 
@@ -43,7 +43,6 @@ def extraire_texte(file):
     return ""
 
 def decouper_chapitres(texte):
-    # Regex (?i) : Insensible à la casse (Chapitre, CHAPITRE, chapitre...)
     parts = re.split(r'(?i)(chapitre\s+\d+)', texte)
     if len(parts) <= 1:
         return [{"titre": "Manuscrit Complet", "contenu": texte}]
@@ -54,11 +53,12 @@ def decouper_chapitres(texte):
             chapitres.append({"titre": parts[i], "contenu": parts[i+1]})
     return chapitres
 
-# --- 4. CONNEXION IA (Gemini 3 Flash) ---
+# --- 4. CONNEXION IA (Utilisation de Gemini 1.5 Flash) ---
 model = None
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-3-flash') 
+    # CORRECTION : Utilisation d'un modèle existant et stable
+    model = genai.GenerativeModel('gemini-1.5-flash') 
 except Exception as e:
     st.error(f"⚠️ Erreur config Gemini : {e}")
 
@@ -71,7 +71,7 @@ with st.sidebar:
         if not files:
             st.warning("Sélectionne au moins un fichier.")
         else:
-            with st.spinner("Analyse du manuscrit..."):
+            with st.spinner("Décodage de la Saga..."):
                 all_text = ""
                 for f in files:
                     all_text += f"\n\n[TOME: {f.name}]\n\n"
@@ -91,8 +91,6 @@ if st.session_state.chapitres:
     
     with col_sel:
         perso = st.selectbox("Personnage à scanner", list(CANON_DATA.keys()))
-        
-        # Filtrage intelligent (cherche prénoms et surnoms)
         filtre = [c for c in st.session_state.chapitres if perso.lower() in c['contenu'].lower() or perso == "SAGA"]
         st.caption(f"{len(filtre)} chapitres correspondent.")
         selection = st.multiselect("Chapitres à envoyer à l'IA", filtre, format_func=lambda x: x['titre'])
@@ -112,7 +110,6 @@ if st.session_state.chapitres:
                 if not model: st.error("IA non connectée.")
                 elif not selection: st.error("Choisis au moins un chapitre !")
                 else:
-                    # Extraction du contenu (limite à 10k caractères par chapitre pour le quota)
                     contexte = "\n\n".join([f"### {c['titre']}\n{c['contenu'][:10000]}" for c in selection])
                     prompt = f"""
                     RÔLE : Expert narratif de la Saga 'Grizzly et Moineau'.
@@ -131,7 +128,8 @@ if st.session_state.chapitres:
                     try:
                         with st.spinner(f"Analyse de {perso} en cours..."):
                             resp = model.generate_content(prompt, generation_config={"temperature": 0.2})
-                            txt_ia = getattr(resp, "text", "_Réponse vide._")
+                            txt_ia = getattr(resp, "text", "") or "_Réponse vide de l'IA._"
+                            
                             st.session_state.analyses.insert(0, {
                                 "id": datetime.now(timezone.utc).timestamp(),
                                 "date": datetime.now().strftime("%H:%M"),
@@ -140,22 +138,21 @@ if st.session_state.chapitres:
                     except Exception as e:
                         st.error(f"Erreur Gemini : {e}")
 
-# --- 7. HISTORIQUE PERSISTANT & GSHEETS ---
+# --- 7. HISTORIQUE & ARCHIVAGE ---
 st.divider()
 for ana in st.session_state.analyses:
-    unique_key = f"{ana['id']}-{ana['perso']}"
+    unique_key = f"{ana['id']}-{ana['perso']}-{ana['type']}"
     
     with st.expander(f"📌 {ana['type']} - {ana['perso']} ({ana['date']})", expanded=True):
         st.markdown(ana['texte'])
         
-        if st.button(f"💾 Archiver dans GSheet", key=f"btn-{unique_key}"):
+        if st.button(f"💾 Archiver {ana['perso']}", key=f"btn-{unique_key}"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                # On lit l'existant pour ajouter à la suite (Append)
                 try:
                     existing = conn.read(worksheet=ana['perso'])
                 except:
-                    existing = pd.DataFrame() # Onglet vide/nouveau
+                    existing = pd.DataFrame()
                 
                 new_row = pd.DataFrame([ana])
                 final_df = pd.concat([existing, new_row], ignore_index=True)
@@ -163,5 +160,5 @@ for ana in st.session_state.analyses:
                 conn.update(worksheet=ana['perso'], data=final_df)
                 st.success(f"Archivé dans l'onglet '{ana['perso']}' !")
             except Exception as e:
-                st.error(f"Vérifie si l'onglet '{ana['perso']}' existe dans ton Sheet ! Erreur : {e}")
-                        
+                st.error(f"Erreur GSheets : {e}")
+                
