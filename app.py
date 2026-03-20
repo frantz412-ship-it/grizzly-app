@@ -139,10 +139,11 @@ def appel_ia_stable(prompt: str) -> str:
 
     genai.configure(api_key=api_key)
 
+    # Noms exacts valides sur l'API Gemini v1beta (mars 2026)
     modeles = [
-        "models/gemini-1.5-flash",
-        "models/gemini-1.5-pro",
-        "models/gemini-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
     ]
 
     last_error = ""
@@ -161,9 +162,11 @@ def appel_ia_stable(prompt: str) -> str:
             last_error = str(e)
             if "404" in last_error or "not found" in last_error.lower():
                 continue
+            # Erreur autre que 404 : on arrête et on retourne le message
             return f"❌ Erreur Gemini ({m_name}) : {last_error}"
 
     return f"❌ Aucun modèle Gemini disponible. Dernière erreur : {last_error}"
+
 
 # ==========================================
 # 5. CONNEXION GOOGLE SHEETS (gspread)
