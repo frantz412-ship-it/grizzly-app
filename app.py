@@ -1,6 +1,6 @@
-import streamlit as st
+import os
 import re
-import time
+import streamlit as st
 import google.generativeai as genai
 from docx import Document
 import pdfplumber
@@ -9,101 +9,78 @@ from odf.text import P
 from odf.teletype import extractText
 
 # ==========================================
-# 0. CONFIGURATION & MOTEUR
+# 0. CONFIGURATION STABLE
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("Clé API manquante dans les Secrets Streamlit.")
 
 def appel_ia(prompt):
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        if "429" in str(e): return "⚠️ Quota atteint. Attends 10s."
-        return f"❌ Erreur : {e}"
+    """Moteur résilient qui teste les chemins v1 stables"""
+    # On teste les noms de modèles les plus standards
+    for m_name in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]:
+        try:
+            model = genai.GenerativeModel(m_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            if "404" in str(e): continue # On tente le modèle suivant
+            return f"❌ Erreur : {e}"
+    return "❌ Aucun modèle n'a répondu. Vérifie tes accès sur AI Studio."
 
 # ==========================================
-# 1. CONVERSION & FILTRAGE (LE TRIEUR)
+# 1. TRIAGE DES TEXTES (ÉCONOMIE DE QUOTA)
 # ==========================================
-
 def convertir_en_txt(f):
-    """Transforme n'importe quel fichier en texte brut (.txt interne)"""
-    if f.name.endswith(".pdf"):
-        with pdfplumber.open(f) as pdf:
-            return "\n".join([p.extract_text() or "" for p in pdf.pages])
-    elif f.name.endswith(".docx"):
-        return "\n".join([p.text for p in Document(f).paragraphs])
-    elif f.name.endswith(".odt"):
-        return "\n".join([extractText(p) for p in load(f).getElementsByType(P)])
-    return ""
+    try:
+        if f.name.endswith(".pdf"):
+            with pdfplumber.open(f) as pdf:
+                return "\n".join([p.extract_text() or "" for p in pdf.pages])
+        elif f.name.endswith(".docx"):
+            return "\n".join([p.text for p in Document(f).paragraphs])
+        elif f.name.endswith(".odt"):
+            return "\n".join([extractText(p) for p in load(f).getElementsByType(P)])
+    except: return ""
 
-def extraire_passages_clefs(texte_complet, nom_perso, fenetre=500):
-    """
-    Trieur Python : Trouve le nom du perso et prend du contexte autour.
-    Évite d'envoyer 400 pages à l'IA pour rien.
-    """
+def extraire_passages_perso(texte, nom_perso, fenetre=800):
+    """Trieur Python : Extrait uniquement ce qui concerne le perso"""
     nom_perso = nom_perso.lower()
+    matches = [m.start() for m in re.finditer(re.escape(nom_perso), texte.lower())]
     passages = []
-    # On cherche toutes les occurrences du nom
-    for match in re.finditer(re.escape(nom_perso), texte_complet.lower()):
-        start = max(0, match.start() - fenetre)
-        end = min(len(texte_complet), match.end() + fenetre)
-        passages.append(texte_complet[start:end])
-    
-    # On limite à 15-20 passages les plus pertinents pour ne pas saturer
-    return "\n\n--- NOUVEL EXTRAIT ---\n\n".join(passages[:25])
+    for m in matches[:30]: # On limite à 30 passages pour le quota gratuit
+        start, end = max(0, m - fenetre), min(len(texte), m + fenetre)
+        passages.append(texte[start:end])
+    return "\n\n--- EXTRAIT ---\n\n".join(passages)
 
 # ==========================================
 # 2. INTERFACE
 # ==========================================
-st.set_page_config(page_title="L'Archiviste Stratège", layout="wide")
-st.title("🛡️ L'Archiviste V17.0 (Triage & Fiches)")
+st.set_page_config(page_title="Archiviste V17.1", layout="wide")
+st.title("🛡️ L'Archiviste V17.1 (Mode Stable)")
 
-# Sidebar : Chargement
-st.sidebar.header("📁 Importation de la Saga")
 f_inputs = st.sidebar.file_uploader("Charger les Tomes", type=["pdf", "docx", "odt"], accept_multiple_files=True)
 
-if f_inputs:
-    if st.sidebar.button("⚙️ Préparer le Triage"):
-        with st.spinner("Conversion en .txt en cours..."):
-            full_txt = ""
-            for f in f_inputs:
-                full_txt += convertir_en_txt(f) + "\n\n"
-            st.session_state.txt_saga = full_txt.replace("’", "'")
-            st.success("Saga prête pour l'analyse !")
+if f_inputs and st.sidebar.button("⚙️ Scanner l'Intégrale"):
+    with st.spinner("Conversion des 4 tomes en texte brut..."):
+        full_txt = "".join([convertir_en_txt(f) for f in f_inputs])
+        st.session_state.txt_saga = full_txt.replace("’", "'")
+        st.success("Saga chargée et triée !")
 
-# Analyse et Fiche
 if "txt_saga" in st.session_state:
-    nom_cible = st.text_input("Nom du personnage à extraire (ex: Zack, Léo, Jonas...)")
-    
-    if nom_cible and st.button(f"🔍 Générer la Fiche de {nom_cible}"):
-        # Étape 1 : Le Triage (Python)
-        with st.spinner("Triage des passages pertinents..."):
-            extraits = extraire_passages_clefs(st.session_state.txt_saga, nom_cible)
+    nom = st.text_input("Nom du personnage (Zack, Jonas, Léo...)")
+    if nom and st.button(f"🔍 Générer la Fiche Complète"):
+        with st.spinner(f"Triage des passages de {nom}..."):
+            extraits = extraire_passages_perso(st.session_state.txt_saga, nom)
         
-        # Étape 2 : L'Analyse (IA)
         if extraits:
-            st.info(f"Analyse de {len(extraits)//1000}ko de données ciblées...")
-            prompt_fiche = f"""
-            [INSTRUCTIONS ÉDITORIALES - SAGA GRIZZLY ET MOINEAU]
-            À partir des extraits fournis, génère une FICHE PERSONNAGE exhaustive pour {nom_cible}.
+            prompt = f"""Génère la fiche détaillée de {nom} :
+            - PHYSIQUE & AURAS
+            - PSYCHOLOGIE & TRAUMAS
+            - DIAGNOSTIC NARRATIF (Cohérence médicale du trauma)
+            - LIENS (Amours, Sexe, Tensions)
+            - ÉQUIPEMENT & LIEUX
+            TEXTE : {extraits}"""
             
-            STRUCTURE :
-            1. PHYSIQUE : Taille, traits, cicatrices, auras.
-            2. PSYCHOLOGIE : État mental, évolution du soi, traumatismes.
-            3. DIAGNOSTIC FICTIONNEL : Analyse somatique et psychologique du trauma (à titre de cohérence narrative).
-            4. LIENS & RAPPORTS : Relations amoureuses, sexuelles, amitiés et tensions.
-            5. ÉQUIPEMENT : Armes, vêtements récurrents.
-            6. LIEUX : Endroits associés au personnage.
-            7. ÉCARTS AU CANON : Si tu détectes une incohérence par rapport à l'évolution habituelle.
-
-            EXTRAITS :
-            {extraits}
-            """
-            with st.spinner("Gemini rédige la fiche..."):
-                fiche = appel_ia(prompt_fiche)
-                st.markdown(fiche)
-                st.download_button("💾 Télécharger la Fiche", fiche, file_name=f"Fiche_{nom_cible}.txt")
-        else:
-            st.error("Aucune mention de ce personnage trouvée.")
+            with st.spinner("L'IA rédige la fiche..."):
+                st.markdown(appel_ia(prompt))
