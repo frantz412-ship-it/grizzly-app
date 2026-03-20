@@ -11,20 +11,32 @@ from odf.opendocument import load
 from odf.text import P
 from odf.teletype import extractText
 
-# --- 1. LE CODE SOURCE DE LA VÉRITÉ (VERROUS) ---
+# --- 1. CONFIGURATION ET COMMANDEMENTS DE LA SAGA ---
 SHEET_ID = "189e8EDBteW2bk-6XQMqz5CbDN7g2_CC-VY238jnC98I"
 
 VERROU_SAGA = """
-COMMANDEMENTS DE FIDÉLITÉ ABSOLUE :
+COMMANDEMENTS DE FIDÉLITÉ (V14) :
 
-1. RÈGLE D'OR : Ne jamais inventer. Si une information (couleur, émotion, passé) n'est pas explicitement dans l'extrait ou dans ce verrou, écris "Non mentionné".
-2. VISION DE LÉO (15 ans) : 
-   - Il est le "Fils [fis] de Lumière". Il utilise sa concentration pour voir les "fils [fil]" (liens d'auras).
-   - JONAS (17 ans) : Fil brun/terre. 
-   - ZACK (15 ans) : Fil rouge/noir (Aura flamboyante).
-   - AUTYSSÉ : Fil bleu/froid.
-3. CONTEXTE ET ENVIRONNEMENT : Analyse toujours comment le lieu (froid, rivière, forêt, Tribu) dicte la posture du personnage.
-4. LE STIGMATE DE ZACK : Le mot "Gaz" est une insulte de la Tribu. Zack ne possède pas de "pouvoir de gaz", il subit une réification. Son rire est une défense somatique.
+1. L'IDENTITÉ DE ZACK :
+   - Nom officiel : Zackary. 
+   - Préférence : Il préfère se faire appeler ZACK par ses amis (Jonas, Léo, Jade, Autyssé).
+   - Stigmate : "Gaz" est une insulte de la Tribu. Zack ne l'utilise jamais pour lui-même.
+
+2. LES VISIONS DE LÉO (15 ans) :
+   - L'OMBRE : Elle apparaît sous la forme d'une LIGNE NOIRE dans les fils de vision de Léo. C'est la menace, la corruption ou le vide.
+   - LES FILS (Liens) : Jonas (Brun/Terre), Zack (Rouge/Noir), Autyssé (Bleu/Froid).
+   - [FEW-SHOT EXEMPLE] :
+     ❌ INCORRECT : "Léo voit une ligne noire dans son aura, c'est son passé."
+     ✅ CORRECT : "Léo perçoit l'Ombre comme une ligne noire qui tente de grignoter les fils du groupe."
+
+3. CARTOGRAPHIE DES RELATIONS :
+   - JONAS / ZACK : Relation protecteur/protégé. Zack admire Jonas mais craint l'intrusion physique.
+   - LÉO / ZACK : Relation guide/suiveur. Zack suit la lumière de Léo mais craint de rompre le fil.
+   - AUTYSSÉ / ZACK : Opposition Structure vs Chaos. Autyssé analyse, Zack ressent. Tension et besoin mutuel.
+   - ZACK / JADE : Couple asexuel. Bastion de sécurité absolue et de souveraineté.
+
+4. PHYSIQUE :
+   - Jonas (17 ans), Léo (15 ans), Zack (15 ans). Respecter ces âges dans les analyses somatiques.
 """
 
 # --- 2. FONCTIONS TECHNIQUES ---
@@ -69,7 +81,7 @@ def appel_ia(prompt):
         payload = {
             "model": "mistral-large-latest", 
             "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.0 # Zéro fantaisie, précision chirurgicale
+            "temperature": 0.0 # Précision maximale
         }
         r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
         return r.json()["choices"][0]["message"]["content"]
@@ -78,42 +90,41 @@ def appel_ia(prompt):
 
 # --- 3. INTERFACE ---
 
-st.set_page_config(page_title="L'Archiviste V13.0", layout="wide")
-st.title("🛡️ L'Archiviste : Fidélité au Récit")
+st.set_page_config(page_title="L'Archiviste V14.0", layout="wide")
+st.title("🛡️ L'Archiviste : L'Ombre et les Fils")
 
 st.sidebar.header("📁 Manuscrits")
 fichiers = st.sidebar.file_uploader("Charger chapitres", type=["pdf", "docx", "odt"], accept_multiple_files=True)
 
 options_cible = ["Jonas", "Léo", "Zack", "Autyssé", "Jade", "SAGA"]
-nom_perso = st.sidebar.selectbox("Cible de l'étude", options_cible)
+nom_perso = st.sidebar.selectbox("Cible de l'analyse", options_cible)
 
-if fichiers and st.button(f"🚀 Générer Fiche Réelle : {nom_perso}"):
-    with st.spinner(f"Analyse contextuelle de {nom_perso}..."):
+if fichiers and st.button(f"🚀 Générer Fiche Complète : {nom_perso}"):
+    with st.spinner(f"Analyse des relations pour {nom_perso}..."):
         
         texte_brut = "\n".join([lire_manuscrit(f) for f in fichiers])
         
         if nom_perso == "SAGA":
             mission = """
-            ANALYSE DE COHÉRENCE SAGA.
-            1. État du monde : Climat, menace, ressources.
-            2. Dynamique des fils : État des liens d'auras entre les personnages.
-            3. Thèmes : Reconstruction et Consentement.
-            INTERDICTION : Ne pas inventer d'événements non décrits.
+            ANALYSE DE LA SAGA :
+            1. Présence de l'Ombre (la ligne noire dans les visions).
+            2. Solidité des liens (fils) entre les membres du groupe.
+            3. Évolution de la souveraineté collective face à la Tribu.
             """
             contexte = texte_brut[:8000]
         else:
             mission = f"""
-            FICHE RÉELLE DE PERSONNAGE : {nom_perso}.
-            1. APPARENCE PHYSIQUE : Uniquement ce qui est décrit (vêtements, traits, âge).
-            2. ÉTAT SOMATIQUE : Réaction du corps à l'environnement (froid, peur, présence des autres).
-            3. SOUVERAINETÉ : Analyse des moments où le personnage reprend son territoire intérieur.
-            4. FIL D'AURA : Couleur et état perçu par Léo.
-            IMPORTANT : Si un détail n'est pas présent, indique 'Information absente du texte'.
+            FICHE PERSONNAGE RÉELLE : {nom_perso}.
+            1. PHYSIQUE ET SOMATIQUE : État du corps (Respecter l'âge et les raideurs).
+            2. RELATIONS : Analyse du lien spécifique avec les autres membres du groupe (Jonas, Léo, Zack, Autyssé, Jade).
+            3. VISION DES FILS : État de son fil d'aura et proximité de l'Ombre (ligne noire).
+            4. SOUVERAINETÉ : Moments de contrôle intérieur.
+            NOTE : Zack préfère 'Zack' pour ses amis. Zackary est son nom officiel.
             """
             lignes = texte_brut.split('\n')
             contexte = "\n".join([l for l in lignes if nom_perso.lower() in l.lower()][:50])
 
-        prompt = f"{VERROU_SAGA}\n\nMISSION : {mission}\n\nEXTRAITS DU MANUSCRIT : {contexte}"
+        prompt = f"{VERROU_SAGA}\n\nMISSION : {mission}\n\nEXTRAITS : {contexte}"
         
         resultat = appel_ia(prompt)
         st.session_state.resultat = resultat
@@ -121,12 +132,12 @@ if fichiers and st.button(f"🚀 Générer Fiche Réelle : {nom_perso}"):
 
 if "resultat" in st.session_state:
     st.divider()
-    st.subheader(f"📖 Fiche Officielle : {st.session_state.cible_actuelle}")
+    st.subheader(f"📖 Fiche Certifiée : {st.session_state.cible_actuelle}")
     st.markdown(st.session_state.resultat)
     
     if st.button(f"💾 Archiver dans l'onglet {st.session_state.cible_actuelle}"):
         onglet = connecter_et_obtenir_onglet(st.session_state.cible_actuelle)
         if onglet:
             date_now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            onglet.append_row([date_now, st.session_state.resultat, "Fiche Réelle V13"])
-            st.success(f"✅ La fiche de {st.session_state.cible_actuelle} a été certifiée et enregistrée.")
+            onglet.append_row([date_now, st.session_state.resultat, "V14 - Ombre & Relations"])
+            st.success(f"✅ Analyse de {st.session_state.cible_actuelle} enregistrée.")
